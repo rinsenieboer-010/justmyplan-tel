@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "smartplanner-tel",
-    "slug": "smartplanner-tel",
-    "version": "1.0.0",
+    "name": "justmyplan",
+    "slug": "justmyplan",
+    "scheme": "justmyplan",
+    "version": "6.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,7 +14,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.justmyplan.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,6 +29,21 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "justmyplan gebruikt je foto's om afbeeldingen te sturen naar de assistent."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "d203a3f9-7c08-49a0-bb8e-d31170cd14bf"
+      }
     }
   }
 }
