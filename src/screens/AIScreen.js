@@ -18,7 +18,7 @@ const SUGGESTIONS = ['Plan mijn taken in', 'Vrije momenten deze week', 'Goede vo
 const TOOLS = [
   {
     name: 'no_action',
-    description: 'Gebruik dit wanneer de gebruiker geen taak of afspraak wil aanmaken of wijzigen — alleen een vraag stelt, informatie opvraagt of gesprek voert. Geef je antwoord via de reply parameter.',
+    description: 'Gebruik dit UITSLUITEND voor pure gespreksvragen waarbij niets aangepast hoeft te worden. VERBOD: gebruik no_action NOOIT om te bevestigen dat je taken hebt bijgewerkt — dat is hallucination. Bevestiging mag alleen komen nadat update_task is aangeroepen.',
     input_schema: {
       type: 'object',
       properties: {
@@ -203,8 +203,8 @@ export default function AIScreen() {
         'GEDRAGSREGEL — je gebruikt ALTIJD een tool, zonder uitzondering:\n' +
         '- Gebruiker vraagt een actie (taak/afspraak aanmaken of wijzigen)? gebruik de actie-tool direct\n' +
         '- Gebruiker stelt een vraag of voert gesprek? gebruik no_action met je antwoord\n' +
-        '- Meerdere taken tegelijk bijwerken? roep meerdere update_task tools aan in dezelfde response\n' +
-        'VERBOD: Zeg NOOIT "ik ga X doen" of "ik doe X nu" — doe het gewoon via de tool.\n\n' +
+        '- Meerdere taken tegelijk bijwerken? roep ALLE update_task tools aan in dezelfde response, ook al zijn het er 40.\n' +
+        'ABSOLUUT VERBOD: (1) Zeg nooit "ik ga X doen" zonder de tool aan te roepen. (2) Gebruik no_action nooit als bevestiging van iets wat je "zojuist deed" — dat is hallucination.\n\n' +
         'WERKWIJZE:\n' + (memory || 'Nog geen werkwijze opgeslagen.') + '\n\n' +
         'TAKEN:\n' + (taskList || 'Geen taken') + '\n\n' +
         'AGENDA:\n' + (eventList || 'Geen afspraken') + '\n\n' +
@@ -229,7 +229,7 @@ export default function AIScreen() {
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
-            max_tokens: 4096,
+            max_tokens: 8192,
             system: systemPrompt,
             tools: TOOLS,
             tool_choice: iterations === 1 ? { type: 'any' } : { type: 'auto' },
