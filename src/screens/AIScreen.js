@@ -17,17 +17,6 @@ const SUGGESTIONS = ['Plan mijn taken in', 'Vrije momenten deze week', 'Goede vo
 
 const TOOLS = [
   {
-    name: 'no_action',
-    description: 'Gebruik dit UITSLUITEND voor pure gespreksvragen waarbij niets aangepast hoeft te worden. VERBOD: gebruik no_action NOOIT om te bevestigen dat je taken hebt bijgewerkt — dat is hallucination. Bevestiging mag alleen komen nadat update_task is aangeroepen.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        reply: { type: 'string', description: 'Jouw antwoord aan de gebruiker in het Nederlands' },
-      },
-      required: ['reply'],
-    },
-  },
-  {
     name: 'create_event',
     description: 'Plan een afspraak in de agenda van de gebruiker.',
     input_schema: {
@@ -225,12 +214,12 @@ export default function AIScreen() {
       const systemPrompt =
         'Je bent een slimme planningsassistent voor justmyplan.\n\n' +
         'Vandaag is het: ' + todayStr + '\n\n' +
-        'GEDRAGSREGEL — je gebruikt ALTIJD een tool, zonder uitzondering:\n' +
+        'GEDRAGSREGEL:\n' +
         '- Gebruiker vraagt een actie (taak/afspraak aanmaken of wijzigen)? gebruik de actie-tool direct\n' +
-        '- Gebruiker stelt een vraag of voert gesprek? gebruik no_action met je antwoord\n' +
-        '- Meerdere taken wijzigen op basis van een woord? gebruik filter_and_update_tasks met het zoekwoord.\n' +
-        '- Eén taak wijzigen? gebruik update_task.\n' +
-        'VERBOD: Zeg nooit dat je iets hebt gedaan zonder de bijbehorende tool aan te roepen.\n\n' +
+        '- Meerdere taken wijzigen op basis van een woord? gebruik filter_and_update_tasks met het zoekwoord\n' +
+        '- Eén taak wijzigen? gebruik update_task\n' +
+        '- Gebruiker stelt een vraag of voert gesprek? antwoord gewoon als tekst, geen tool nodig\n' +
+        'VERBOD: Zeg NOOIT dat je iets hebt gedaan zonder de bijbehorende tool aan te roepen.\n\n' +
         'WERKWIJZE:\n' + (memory || 'Nog geen werkwijze opgeslagen.') + '\n\n' +
         'TAKEN:\n' + (taskList || 'Geen taken') + '\n\n' +
         'AGENDA:\n' + (eventList || 'Geen afspraken') + '\n\n' +
@@ -267,14 +256,6 @@ export default function AIScreen() {
 
         if (data.stop_reason === 'tool_use') {
           const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
-
-          // no_action: toon antwoord direct en stop de loop
-          const noActionBlock = toolUseBlocks.find(b => b.name === 'no_action');
-          if (noActionBlock) {
-            setMessages(m => [...m, { role: 'assistant', content: noActionBlock.input.reply }]);
-            continueLoop = false;
-            break;
-          }
 
           // Toon antwoord alvast als er ook een tekst-block is
           const textBlock = data.content.find(b => b.type === 'text');
