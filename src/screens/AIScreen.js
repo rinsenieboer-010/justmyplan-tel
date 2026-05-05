@@ -72,17 +72,17 @@ const TOOLS = [
     },
   },
   {
-    name: 'batch_update_tasks',
-    description: 'Update meerdere taken tegelijk met dezelfde wijziging. Gebruik dit wanneer je meerdere taken dezelfde deadline, status of prioriteit moet geven. Geef ALLE overeenkomende task_ids mee in één aanroep.',
+    name: 'filter_and_update_tasks',
+    description: "Zoek taken op basis van een zoekwoord in de taaknaam en pas ze allemaal tegelijk aan. Gebruik dit voor opdrachten zoals 'alle stage-taken op donderdag zetten'.",
     input_schema: {
       type: 'object',
       properties: {
-        task_ids: { type: 'array', items: { type: 'string' }, description: 'Lijst van alle task_ids die bijgewerkt moeten worden' },
+        keyword:  { type: 'string', description: 'Zoekwoord dat in de taaknaam moet voorkomen (hoofdletterongevoelig)' },
         deadline: { type: 'string', description: 'YYYY-MM-DD' },
         status:   { type: 'string', enum: ['', 'open', 'bezig', 'klaar'] },
         priority: { type: 'string', enum: ['', 'hoog', 'midden', 'laag'] },
       },
-      required: ['task_ids'],
+      required: ['keyword'],
     },
   },
   {
@@ -188,17 +188,16 @@ export default function AIScreen() {
           ...(input.priority !== undefined && { priority: input.priority }),
         });
       }
-    } else if (name === 'batch_update_tasks') {
-      for (const taskId of (input.task_ids || [])) {
-        const task = tasks.find(t => String(t.id) === String(taskId));
-        if (task) {
-          await updateTask({
-            ...task,
-            ...(input.status   !== undefined && { status: input.status }),
-            ...(input.deadline !== undefined && { deadline: input.deadline }),
-            ...(input.priority !== undefined && { priority: input.priority }),
-          });
-        }
+    } else if (name === 'filter_and_update_tasks') {
+      const keyword = (input.keyword || '').toLowerCase();
+      const matched = tasks.filter(t => t.title?.toLowerCase().includes(keyword));
+      for (const task of matched) {
+        await updateTask({
+          ...task,
+          ...(input.status   !== undefined && { status: input.status }),
+          ...(input.deadline !== undefined && { deadline: input.deadline }),
+          ...(input.priority !== undefined && { priority: input.priority }),
+        });
       }
     }
   };
@@ -229,7 +228,7 @@ export default function AIScreen() {
         'GEDRAGSREGEL — je gebruikt ALTIJD een tool, zonder uitzondering:\n' +
         '- Gebruiker vraagt een actie (taak/afspraak aanmaken of wijzigen)? gebruik de actie-tool direct\n' +
         '- Gebruiker stelt een vraag of voert gesprek? gebruik no_action met je antwoord\n' +
-        '- Meerdere taken met dezelfde wijziging? gebruik batch_update_tasks met alle task_ids in één aanroep.\n' +
+        '- Meerdere taken wijzigen op basis van een woord? gebruik filter_and_update_tasks met het zoekwoord.\n' +
         '- Eén taak wijzigen? gebruik update_task.\n' +
         'VERBOD: Zeg nooit dat je iets hebt gedaan zonder de bijbehorende tool aan te roepen.\n\n' +
         'WERKWIJZE:\n' + (memory || 'Nog geen werkwijze opgeslagen.') + '\n\n' +
