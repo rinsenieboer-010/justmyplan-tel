@@ -59,7 +59,7 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'Update de status, deadline of prioriteit van een bestaande taak. Gebruik de task_id uit de takenlijst.',
+    description: 'Update één taak. Gebruik dit voor wijzigingen aan een enkele taak.',
     input_schema: {
       type: 'object',
       properties: {
@@ -69,6 +69,20 @@ const TOOLS = [
         priority: { type: 'string', enum: ['', 'hoog', 'midden', 'laag'] },
       },
       required: ['task_id'],
+    },
+  },
+  {
+    name: 'batch_update_tasks',
+    description: 'Update meerdere taken tegelijk met dezelfde wijziging. Gebruik dit wanneer je meerdere taken dezelfde deadline, status of prioriteit moet geven. Geef ALLE overeenkomende task_ids mee in één aanroep.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        task_ids: { type: 'array', items: { type: 'string' }, description: 'Lijst van alle task_ids die bijgewerkt moeten worden' },
+        deadline: { type: 'string', description: 'YYYY-MM-DD' },
+        status:   { type: 'string', enum: ['', 'open', 'bezig', 'klaar'] },
+        priority: { type: 'string', enum: ['', 'hoog', 'midden', 'laag'] },
+      },
+      required: ['task_ids'],
     },
   },
   {
@@ -174,6 +188,18 @@ export default function AIScreen() {
           ...(input.priority !== undefined && { priority: input.priority }),
         });
       }
+    } else if (name === 'batch_update_tasks') {
+      for (const taskId of (input.task_ids || [])) {
+        const task = tasks.find(t => String(t.id) === String(taskId));
+        if (task) {
+          await updateTask({
+            ...task,
+            ...(input.status   !== undefined && { status: input.status }),
+            ...(input.deadline !== undefined && { deadline: input.deadline }),
+            ...(input.priority !== undefined && { priority: input.priority }),
+          });
+        }
+      }
     }
   };
 
@@ -203,8 +229,9 @@ export default function AIScreen() {
         'GEDRAGSREGEL — je gebruikt ALTIJD een tool, zonder uitzondering:\n' +
         '- Gebruiker vraagt een actie (taak/afspraak aanmaken of wijzigen)? gebruik de actie-tool direct\n' +
         '- Gebruiker stelt een vraag of voert gesprek? gebruik no_action met je antwoord\n' +
-        '- Meerdere taken tegelijk bijwerken? roep ALLE update_task tools aan in dezelfde response, ook al zijn het er 40.\n' +
-        'ABSOLUUT VERBOD: (1) Zeg nooit "ik ga X doen" zonder de tool aan te roepen. (2) Gebruik no_action nooit als bevestiging van iets wat je "zojuist deed" — dat is hallucination.\n\n' +
+        '- Meerdere taken met dezelfde wijziging? gebruik batch_update_tasks met alle task_ids in één aanroep.\n' +
+        '- Eén taak wijzigen? gebruik update_task.\n' +
+        'VERBOD: Zeg nooit dat je iets hebt gedaan zonder de bijbehorende tool aan te roepen.\n\n' +
         'WERKWIJZE:\n' + (memory || 'Nog geen werkwijze opgeslagen.') + '\n\n' +
         'TAKEN:\n' + (taskList || 'Geen taken') + '\n\n' +
         'AGENDA:\n' + (eventList || 'Geen afspraken') + '\n\n' +
