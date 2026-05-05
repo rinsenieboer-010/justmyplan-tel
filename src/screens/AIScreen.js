@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, FlatList, TextInput, TouchableOpacity,
   StyleSheet, KeyboardAvoidingView, Platform, ScrollView,
@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useData } from '../context/DataContext';
 import { pad, MONTHS } from '../utils';
 
@@ -14,13 +15,95 @@ const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart
 
 const SUGGESTIONS = ['Plan mijn taken in', 'Vrije momenten deze week', 'Goede voornemens inplannen'];
 
+const TOOLS = [
+  {
+    name: 'no_action',
+    description: 'Gebruik dit wanneer de gebruiker geen taak of afspraak wil aanmaken of wijzigen — alleen een vraag stelt, informatie opvraagt of gesprek voert. Geef je antwoord via de reply parameter.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        reply: { type: 'string', description: 'Jouw antwoord aan de gebruiker in het Nederlands' },
+      },
+      required: ['reply'],
+    },
+  },
+  {
+    name: 'create_event',
+    description: 'Plan een afspraak in de agenda van de gebruiker.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title:   { type: 'string',  description: 'Titel van de afspraak' },
+        date:    { type: 'string',  description: 'Datum in YYYY-MM-DD formaat' },
+        start_h: { type: 'integer', description: 'Startuur (0-23)' },
+        start_m: { type: 'integer', description: 'Startminuten (0 of 30)' },
+        end_h:   { type: 'integer', description: 'Einduur (0-23)' },
+        end_m:   { type: 'integer', description: 'Eindminuten (0 of 30)' },
+        color:   { type: 'string',  enum: ['blue', 'red', 'yellow', 'green', 'purple'] },
+      },
+      required: ['title', 'date', 'start_h', 'start_m', 'end_h', 'end_m'],
+    },
+  },
+  {
+    name: 'create_task',
+    description: 'Maak een nieuwe taak aan voor de gebruiker.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        title:    { type: 'string', description: 'Titel van de taak' },
+        deadline: { type: 'string', description: 'Deadline in YYYY-MM-DD formaat (optioneel)' },
+        priority: { type: 'string', enum: ['', 'hoog', 'midden', 'laag'] },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'update_task',
+    description: 'Update de status, deadline of prioriteit van een bestaande taak. Gebruik de task_id uit de takenlijst.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        task_id:  { type: 'string', description: 'ID van de taak' },
+        status:   { type: 'string', enum: ['', 'open', 'bezig', 'klaar'] },
+        deadline: { type: 'string', description: 'Nieuwe deadline in YYYY-MM-DD' },
+        priority: { type: 'string', enum: ['', 'hoog', 'midden', 'laag'] },
+      },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'update_memory',
+    description: 'Sla een werkwijze, voorkeur of concept op voor toekomstige gesprekken. Gebruik dit wanneer de gebruiker iets uitlegt dat ook later relevant is. Schrijf de volledige bijgewerkte inhoud — voeg toe aan het bestaande geheugen, verwijder niets zonder toestemming.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string', description: 'De volledige bijgewerkte inhoud van het geheugen.' },
+      },
+      required: ['content'],
+    },
+  },
+];
+
 export default function AIScreen() {
-  const { tasks, events } = useData();
+  const { tasks, events, addTask, addEvent, updateTask } = useData();
+  const [memory, setMemory] = useState('');
+  const MEMORY_KEY = 'jmp_memory';
+
+  useEffect(() => {
+    AsyncStorage.getItem(MEMORY_KEY).then(v => { if (v) setMemory(v); });
+  }, []);
+
+  const saveMemory = async (content) => {
+    setMemory(content);
+    await AsyncStorage.setItem(MEMORY_KEY, content);
+  };
+
   const [messages, setMessages] = useState([
     { role: 'assistant', content: 'Goeiedag! Ik ben je planningsassistent.\n\nIk zie je taken en agenda. Ik kan je helpen:\n- Taken inplannen op vrije momenten\n- Goede voornemens slim verdelen\n- Je week overzichtelijker maken\n\nWat wil je aanpakken?' },
   ]);
   const [input, setInput]           = useState('');
   const [loading, setLoading]       = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('');
   const [pendingImage, setPendingImage] = useState(null); // { uri, base64, mediaType }
   const listRef = useRef(null);
 
@@ -56,6 +139,44 @@ export default function AIScreen() {
     });
   };
 
+  const executeTool = async (name, input) => {
+    if (name === 'update_memory') {
+      await saveMemory(input.content);
+      return;
+    }
+    if (name === 'create_task') {
+      await addTask({
+        title: input.title,
+        deadline: input.deadline || null,
+        priority: input.priority || '',
+        status: '',
+        note: '',
+        list: 'mine',
+      });
+    } else if (name === 'create_event') {
+      await addEvent({
+        title: input.title,
+        date: input.date,
+        startH: input.start_h,
+        startM: input.start_m,
+        endH: input.end_h,
+        endM: input.end_m,
+        color: input.color || 'blue',
+        note: '',
+      });
+    } else if (name === 'update_task') {
+      const task = tasks.find(t => String(t.id) === String(input.task_id));
+      if (task) {
+        await updateTask({
+          ...task,
+          ...(input.status   !== undefined && { status: input.status }),
+          ...(input.deadline !== undefined && { deadline: input.deadline }),
+          ...(input.priority !== undefined && { priority: input.priority }),
+        });
+      }
+    }
+  };
+
   const send = async (text) => {
     const msg = (text || input).trim();
     if (!msg && !pendingImage) return;
@@ -71,41 +192,98 @@ export default function AIScreen() {
 
     try {
       const taskList = tasks.map(t =>
-        '- [ID:' + t.id + '] ' + t.title + ' (' + (t.priority || 'geen prioriteit') + ', ' + (t.status || 'geen status') + (t.deadline ? ', deadline: ' + t.deadline : '') + ')'
+        '- task_id="' + t.id + '" | ' + t.title + ' | ' + (t.priority || 'geen prioriteit') + ' | ' + (t.status || 'geen status') + (t.deadline ? ' | deadline: ' + t.deadline : '')
       ).join('\n');
       const eventList = events.map(e =>
         '- ' + e.title + ' op ' + e.date + ' van ' + pad(e.startH) + ':' + pad(e.startM) + ' tot ' + pad(e.endH) + ':' + pad(e.endM)
       ).join('\n');
       const systemPrompt =
-        'Je bent een slimme, proactieve planningsassistent voor justmyplan.\n\n' +
+        'Je bent een slimme planningsassistent voor justmyplan.\n\n' +
         'Vandaag is het: ' + todayStr + '\n\n' +
+        'GEDRAGSREGEL — je gebruikt ALTIJD een tool, zonder uitzondering:\n' +
+        '- Gebruiker vraagt een actie (taak/afspraak aanmaken of wijzigen)? gebruik de actie-tool direct\n' +
+        '- Gebruiker stelt een vraag of voert gesprek? gebruik no_action met je antwoord\n' +
+        '- Meerdere taken tegelijk bijwerken? roep meerdere update_task tools aan in dezelfde response\n' +
+        'VERBOD: Zeg NOOIT "ik ga X doen" of "ik doe X nu" — doe het gewoon via de tool.\n\n' +
+        'WERKWIJZE:\n' + (memory || 'Nog geen werkwijze opgeslagen.') + '\n\n' +
         'TAKEN:\n' + (taskList || 'Geen taken') + '\n\n' +
         'AGENDA:\n' + (eventList || 'Geen afspraken') + '\n\n' +
-        'Geef concrete, praktische adviezen. Hou antwoorden kort en duidelijk. Spreek Nederlands.';
+        'Regels: spreek altijd Nederlands, geef korte concrete antwoorden, gebruik task_id exact zoals hij in de lijst staat. Gebruik update_memory zodra de gebruiker een voorkeur uitlegt.';
 
       const apiKey = process.env.EXPO_PUBLIC_CLAUDE_API_KEY;
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 1024,
-          system: systemPrompt,
-          messages: buildApiMessages(newMessages, imageToSend),
-        }),
-      });
-      const data = await response.json();
-      const reply = data.content?.[0]?.text || 'Sorry, er ging iets mis.';
-      setMessages(m => [...m, { role: 'assistant', content: reply }]);
+      let apiMessages = buildApiMessages(newMessages, imageToSend);
+
+      // Tool use loop (max 10 iteraties)
+      let iterations = 0;
+      let continueLoop = true;
+      while (continueLoop && iterations < 10) {
+        iterations++;
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-6',
+            max_tokens: 1024,
+            system: systemPrompt,
+            tools: TOOLS,
+            tool_choice: { type: 'any' },
+            messages: apiMessages,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.stop_reason === 'tool_use') {
+          const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
+
+          // no_action: toon antwoord direct en stop de loop
+          const noActionBlock = toolUseBlocks.find(b => b.name === 'no_action');
+          if (noActionBlock) {
+            setMessages(m => [...m, { role: 'assistant', content: noActionBlock.input.reply }]);
+            continueLoop = false;
+            break;
+          }
+
+          // Toon antwoord alvast als er ook een tekst-block is
+          const textBlock = data.content.find(b => b.type === 'text');
+          if (textBlock?.text) {
+            setMessages(m => [...m, { role: 'assistant', content: textBlock.text }]);
+          }
+
+          // Uitvoer-indicator tonen
+          setLoadingStatus('Voert ' + toolUseBlocks.length + ' actie' + (toolUseBlocks.length > 1 ? 's' : '') + ' uit...');
+          await new Promise(r => setTimeout(r, 50)); // geef React tijd om te renderen
+
+          const toolResults = [];
+          for (const toolUse of toolUseBlocks) {
+            await executeTool(toolUse.name, toolUse.input);
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: 'Actie succesvol uitgevoerd.',
+            });
+          }
+          apiMessages = [
+            ...apiMessages,
+            { role: 'assistant', content: data.content },
+            { role: 'user',      content: toolResults },
+          ];
+        } else {
+          const reply = data.content?.find(b => b.type === 'text')?.text || 'Sorry, er ging iets mis.';
+          setMessages(m => [...m, { role: 'assistant', content: reply }]);
+          continueLoop = false;
+        }
+      }
     } catch {
       setMessages(m => [...m, { role: 'assistant', content: 'Er is een verbindingsfout opgetreden.' }]);
     }
     setLoading(false);
+    setLoadingStatus('');
   };
 
   return (
@@ -126,8 +304,9 @@ export default function AIScreen() {
           if (item.role === 'loading') {
             return (
               <View style={s.bubbleRow}>
-                <View style={[s.bubble, s.bubbleAssistant]}>
+                <View style={[s.bubble, s.bubbleAssistant, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
                   <ActivityIndicator size="small" color="#2563EB" />
+                  {loadingStatus ? <Text style={{ fontSize: 12, color: '#6b7280' }}>{loadingStatus}</Text> : null}
                 </View>
               </View>
             );
