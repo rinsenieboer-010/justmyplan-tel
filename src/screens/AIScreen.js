@@ -215,6 +215,7 @@ export default function AIScreen() {
 
       // Tool use loop (max 10 iteraties)
       let iterations = 0;
+      let actionsExecuted = 0;
       let continueLoop = true;
       while (continueLoop && iterations < 10) {
         iterations++;
@@ -228,10 +229,10 @@ export default function AIScreen() {
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
-            max_tokens: 1024,
+            max_tokens: 4096,
             system: systemPrompt,
             tools: TOOLS,
-            tool_choice: { type: 'any' },
+            tool_choice: iterations === 1 ? { type: 'any' } : { type: 'auto' },
             messages: apiMessages,
           }),
         });
@@ -262,6 +263,7 @@ export default function AIScreen() {
           const toolResults = [];
           for (const toolUse of toolUseBlocks) {
             await executeTool(toolUse.name, toolUse.input);
+            actionsExecuted++;
             toolResults.push({
               type: 'tool_result',
               tool_use_id: toolUse.id,
@@ -274,7 +276,8 @@ export default function AIScreen() {
             { role: 'user',      content: toolResults },
           ];
         } else {
-          const reply = data.content?.find(b => b.type === 'text')?.text || 'Sorry, er ging iets mis.';
+          const reply = data.content?.find(b => b.type === 'text')?.text
+            || (actionsExecuted > 0 ? `Gedaan. ${actionsExecuted} item${actionsExecuted > 1 ? 's' : ''} bijgewerkt.` : 'Sorry, er ging iets mis.');
           setMessages(m => [...m, { role: 'assistant', content: reply }]);
           continueLoop = false;
         }
