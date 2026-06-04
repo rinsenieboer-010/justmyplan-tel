@@ -18,7 +18,7 @@ const SLOT_H    = 60;   // pixels per uur
 const HOUR_FROM = 7;
 const HOUR_TO   = 22;
 const HOURS     = Array.from({ length: HOUR_TO - HOUR_FROM }, (_, i) => i + HOUR_FROM);
-const TIME_COL  = 44;   // breedte van tijdlabel-kolom
+const TIME_COL  = 30;   // breedte van tijdlabel-kolom (smal: alleen uur)
 
 // ── TIME PICKER ───────────────────────────────────────────────────────────────
 function TimeRow({ label, h, m, onChangeH, onChangeM }) {
@@ -145,28 +145,24 @@ const em = StyleSheet.create({
 // ── CALENDAR SCREEN ───────────────────────────────────────────────────────────
 export default function CalendarScreen() {
   const { tasks, events, addEvent, updateEvent, deleteEvent } = useData();
-  const [selectedDate, setSelectedDate] = useState(getTodayKey());
-  const [weekBase, setWeekBase]         = useState(new Date());
-  const [modalEvent, setModalEvent]     = useState(undefined);
+  const [weekBase, setWeekBase]     = useState(new Date());
+  const [modalEvent, setModalEvent] = useState(undefined);
   const scrollRef = useRef(null);
 
   const weekDates = getWeekDates(weekBase);
   const todayKey  = getTodayKey();
 
-  const dayEvents = events
-    .filter(e => e.date === selectedDate)
-    .sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM));
-
   const prevWeek = () => { const d = new Date(weekBase); d.setDate(d.getDate() - 7); setWeekBase(d); };
   const nextWeek = () => { const d = new Date(weekBase); d.setDate(d.getDate() + 7); setWeekBase(d); };
 
-  // Scroll naar huidige tijd (of 8:00 als default)
+  // Standaard rond 8:00 in beeld (7:30 net bovenaan), op vandaag rond de huidige tijd
   useEffect(() => {
     const now = new Date();
-    const scrollHour = selectedDate === todayKey ? Math.max(HOUR_FROM, now.getHours() - 1) : HOUR_FROM + 1;
-    const y = (scrollHour - HOUR_FROM) * SLOT_H;
+    const inWeek = weekDates.some(d => dateKey(d) === todayKey);
+    const scrollHour = inWeek ? Math.max(HOUR_FROM, now.getHours() - 1) : 8;
+    const y = Math.max(0, (scrollHour - HOUR_FROM) * SLOT_H - SLOT_H / 2);
     setTimeout(() => scrollRef.current?.scrollTo({ y, animated: false }), 100);
-  }, [selectedDate]);
+  }, [weekBase]);
 
   const handleSave = async (eventData) => {
     if (eventData.id) {
@@ -177,12 +173,17 @@ export default function CalendarScreen() {
     setModalEvent(undefined);
   };
 
-  const openNewEvent = (h, m) => {
-    setModalEvent({ startH: h, startM: m, endH: Math.min(h + 1, HOUR_TO - 1), endM: m });
+  // Nieuwe afspraak op een specifieke dag + uur
+  const openNewEvent = (dateStr, h) => {
+    setModalEvent({ date: dateStr, startH: h, startM: 0, endH: Math.min(h + 1, HOUR_TO - 1), endM: 0 });
   };
 
-  const selectedD     = new Date(selectedDate + 'T12:00:00');
-  const selectedLabel = selectedD.getDate() + ' ' + MONTHS[selectedD.getMonth()];
+  const monthLabel = weekDates[0].getMonth() === weekDates[6].getMonth()
+    ? `${MONTHS[weekDates[0].getMonth()]} ${weekDates[6].getFullYear()}`
+    : `${MONTHS_SHORT[weekDates[0].getMonth()]} – ${MONTHS_SHORT[weekDates[6].getMonth()]} ${weekDates[6].getFullYear()}`;
+
+  // Taken met deadline deze week (per dag), om eventueel een strip te tonen
+  const hasAnyDeadlineTask = weekDates.some(d => tasks.some(t => t.deadline === dateKey(d)));
 
   return (
     <View style={s.container}>
@@ -192,105 +193,100 @@ export default function CalendarScreen() {
         <TouchableOpacity onPress={prevWeek} style={s.weekNavBtn}>
           <Ionicons name="chevron-back" size={20} color="#374151" />
         </TouchableOpacity>
-        <Text style={s.weekNavLabel}>
-          {MONTHS_SHORT[weekDates[0].getMonth()]} – {MONTHS_SHORT[weekDates[6].getMonth()]} {weekDates[6].getFullYear()}
-        </Text>
+        <Text style={s.weekNavLabel}>{monthLabel}</Text>
         <TouchableOpacity onPress={nextWeek} style={s.weekNavBtn}>
           <Ionicons name="chevron-forward" size={20} color="#374151" />
         </TouchableOpacity>
       </View>
 
-      {/* Dag-selector */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.dayRow} contentContainerStyle={s.dayRowContent}>
+      {/* Dag-koppen (uitgelijnd met de rasterkolommen) */}
+      <View style={s.headerRow}>
+        <View style={{ width: TIME_COL }} />
         {weekDates.map((d, i) => {
-          const key        = dateKey(d);
-          const isSelected = key === selectedDate;
-          const isToday    = key === todayKey;
-          const hasEvents  = events.some(e => e.date === key);
+          const isToday = dateKey(d) === todayKey;
           return (
-            <TouchableOpacity key={i} style={[s.dayBtn, isSelected && s.dayBtnSelected]} onPress={() => setSelectedDate(key)}>
-              <Text style={[s.dayName, isSelected && s.dayNameSelected]}>{DAYS_SHORT[i]}</Text>
-              <Text style={[s.dayNum, isSelected && s.dayNumSelected, isToday && !isSelected && s.dayNumToday]}>{d.getDate()}</Text>
-              {hasEvents && <View style={[s.eventDot, isSelected && { backgroundColor: '#fff' }]} />}
-            </TouchableOpacity>
+            <View key={i} style={[s.headerCol, isToday && s.headerColToday]}>
+              <Text style={[s.headerName, isToday && s.headerTodayText]}>{DAYS_SHORT[i]}</Text>
+              <Text style={[s.headerNum, isToday && s.headerTodayText]}>{d.getDate()}</Text>
+            </View>
           );
         })}
-      </ScrollView>
-
-      {/* Dag-label */}
-      <View style={s.dayHeader}>
-        <Text style={s.dayHeaderText}>{selectedLabel}</Text>
-        <Text style={s.dayHeaderCount}>{dayEvents.length} afspraken</Text>
       </View>
 
-      {/* Taken met deadline op geselecteerde dag */}
-      {tasks.filter(t => t.deadline === selectedDate).length > 0 && (
-        <View style={s.taskChipsRow}>
-          <Text style={s.taskChipsLabel}>taken</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.taskChipsContent}>
-            {tasks.filter(t => t.deadline === selectedDate).map(task => (
-              <View key={task.id} style={[s.taskChip, { backgroundColor: PRIO_BG[task.priority] || '#f3f4f6', borderLeftColor: PRIO_COLOR[task.priority] || '#9ca3af' }]}>
-                <Text style={[s.taskChipText, { color: PRIO_COLOR[task.priority] || '#6b7280' }]} numberOfLines={1}>
-                  {task.title}
-                </Text>
+      {/* Deadline-taken strip (alleen tonen als er taken deze week zijn) */}
+      {hasAnyDeadlineTask && (
+        <View style={s.taskRow}>
+          <View style={{ width: TIME_COL, justifyContent: 'center' }}>
+            <Text style={s.taskRowLabel}>taken</Text>
+          </View>
+          {weekDates.map((d, i) => {
+            const dayTasks = tasks.filter(t => t.deadline === dateKey(d));
+            return (
+              <View key={i} style={s.taskCol}>
+                {dayTasks.slice(0, 2).map(task => (
+                  <View key={task.id} style={[s.taskChip, { backgroundColor: PRIO_BG[task.priority] || '#f3f4f6', borderLeftColor: PRIO_COLOR[task.priority] || '#9ca3af' }]}>
+                    <Text style={[s.taskChipText, { color: PRIO_COLOR[task.priority] || '#6b7280' }]} numberOfLines={1}>{task.title}</Text>
+                  </View>
+                ))}
+                {dayTasks.length > 2 && <Text style={s.taskMore}>+{dayTasks.length - 2}</Text>}
               </View>
-            ))}
-          </ScrollView>
+            );
+          })}
         </View>
       )}
 
-      {/* Tijdraster */}
+      {/* Tijdraster — week */}
       <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-        <View style={{ height: HOURS.length * SLOT_H + 20, position: 'relative' }}>
+        <View style={[s.gridRow, { height: HOURS.length * SLOT_H + 12 }]}>
 
-          {/* Uur-rijen */}
-          {HOURS.map(h => (
-            <View key={h} style={{ position: 'absolute', top: (h - HOUR_FROM) * SLOT_H, left: 0, right: 0, height: SLOT_H }}>
-              {/* Tijdlabel */}
-              <Text style={s.timeLabel}>{pad(h)}:00</Text>
-              {/* Hele uur lijn */}
-              <View style={s.hourLine} />
-              {/* Half uur lijn */}
-              <View style={[s.halfLine, { top: SLOT_H / 2 }]} />
-              {/* Klikbaar vlak — hele uur */}
-              <TouchableOpacity
-                style={[s.tapZone, { top: 0, height: SLOT_H / 2 }]}
-                onPress={() => openNewEvent(h, 0)}
-                activeOpacity={0.3}
-              />
-              {/* Klikbaar vlak — half uur */}
-              <TouchableOpacity
-                style={[s.tapZone, { top: SLOT_H / 2, height: SLOT_H / 2 }]}
-                onPress={() => openNewEvent(h, 30)}
-                activeOpacity={0.3}
-              />
-            </View>
-          ))}
+          {/* Tijd-gootje met uurlabels */}
+          <View style={{ width: TIME_COL }}>
+            {HOURS.map(h => (
+              <Text key={h} style={[s.timeLabel, { top: (h - HOUR_FROM) * SLOT_H - 6 }]}>{pad(h)}</Text>
+            ))}
+          </View>
 
-          {/* Afspraken */}
-          {dayEvents.map(ev => {
-            const top    = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
-            const height = Math.max(((ev.endH - ev.startH) * 60 + (ev.endM - ev.startM)) / 60 * SLOT_H, 28);
+          {/* 7 dag-kolommen */}
+          {weekDates.map((d, dayIdx) => {
+            const key       = dateKey(d);
+            const isToday   = key === todayKey;
+            const dayEvents = events.filter(e => e.date === key);
             return (
-              <TouchableOpacity
-                key={ev.id}
-                onPress={() => setModalEvent(ev)}
-                style={[s.eventBlock, {
-                  top,
-                  height,
-                  backgroundColor: EVENT_BG[ev.color]  || '#DBEAFE',
-                  borderLeftColor: EVENT_BORDER[ev.color] || '#2563EB',
-                }]}
-              >
-                <Text style={[s.eventBlockTitle, { color: EVENT_TEXT[ev.color] || '#1d4ed8' }]} numberOfLines={1}>
-                  {ev.title}
-                </Text>
-                {height > 36 && (
-                  <Text style={[s.eventBlockTime, { color: EVENT_TEXT[ev.color] || '#1d4ed8' }]}>
-                    {pad(ev.startH)}:{pad(ev.startM)} – {pad(ev.endH)}:{pad(ev.endM)}
-                  </Text>
-                )}
-              </TouchableOpacity>
+              <View key={dayIdx} style={[s.dayCol, isToday && s.dayColToday]}>
+                {/* Uurlijnen + klikvlakken */}
+                {HOURS.map(h => (
+                  <View key={h}>
+                    <View style={[s.hourLine, { top: (h - HOUR_FROM) * SLOT_H }]} />
+                    <TouchableOpacity
+                      style={[s.tapZone, { top: (h - HOUR_FROM) * SLOT_H, height: SLOT_H }]}
+                      onPress={() => openNewEvent(key, h)}
+                      activeOpacity={0.3}
+                    />
+                  </View>
+                ))}
+
+                {/* Afspraken in deze dag */}
+                {dayEvents.map(ev => {
+                  const top    = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
+                  const height = Math.max(((ev.endH - ev.startH) * 60 + (ev.endM - ev.startM)) / 60 * SLOT_H, 18);
+                  return (
+                    <TouchableOpacity
+                      key={ev.id}
+                      onPress={() => setModalEvent(ev)}
+                      style={[s.eventBlock, {
+                        top,
+                        height,
+                        backgroundColor: EVENT_BG[ev.color]  || '#DBEAFE',
+                        borderLeftColor: EVENT_BORDER[ev.color] || '#2563EB',
+                      }]}
+                    >
+                      <Text style={[s.eventBlockTitle, { color: EVENT_TEXT[ev.color] || '#1d4ed8' }]} numberOfLines={height > 30 ? 2 : 1}>
+                        {ev.title}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             );
           })}
 
@@ -301,7 +297,7 @@ export default function CalendarScreen() {
       {modalEvent !== undefined && (
         <EventModal
           event={modalEvent}
-          selectedDate={selectedDate}
+          selectedDate={modalEvent?.date || todayKey}
           onSave={handleSave}
           onDelete={async (id) => { await deleteEvent(id); setModalEvent(undefined); }}
           onClose={() => setModalEvent(undefined)}
@@ -316,29 +312,30 @@ const s = StyleSheet.create({
   weekNav:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
   weekNavBtn:     { padding: 8 },
   weekNavLabel:   { fontSize: 14, fontWeight: '600', color: '#374151' },
-  dayRow:         { maxHeight: 72, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
-  dayRowContent:  { paddingHorizontal: 8, paddingVertical: 8, gap: 4, flexDirection: 'row' },
-  dayBtn:         { alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, minWidth: 42 },
-  dayBtnSelected: { backgroundColor: '#2563EB' },
-  dayName:        { fontSize: 11, color: '#9ca3af', fontWeight: '600', marginBottom: 2 },
-  dayNameSelected:{ color: '#fff' },
-  dayNum:         { fontSize: 16, fontWeight: '700', color: '#111827' },
-  dayNumSelected: { color: '#fff' },
-  dayNumToday:    { color: '#2563EB' },
-  eventDot:       { width: 4, height: 4, borderRadius: 2, backgroundColor: '#2563EB', marginTop: 2 },
-  dayHeader:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  dayHeaderText:  { fontSize: 14, fontWeight: '700', color: '#111827' },
-  dayHeaderCount: { fontSize: 12, color: '#9ca3af' },
-  taskChipsRow:     { flexDirection: 'row', alignItems: 'center', paddingVertical: 5, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6', minHeight: 32 },
-  taskChipsLabel:   { fontSize: 9, fontWeight: '700', color: '#9ca3af', letterSpacing: 0.5, textTransform: 'uppercase', width: TIME_COL - 8, flexShrink: 0 },
-  taskChipsContent: { flexDirection: 'row', gap: 4, alignItems: 'center' },
-  taskChip:         { borderLeftWidth: 2, borderRadius: 3, paddingHorizontal: 6, paddingVertical: 2, maxWidth: 140 },
-  taskChipText:     { fontSize: 11, fontWeight: '600' },
-  timeLabel:      { position: 'absolute', left: 0, top: -8, width: TIME_COL - 4, fontSize: 10, color: '#9ca3af', textAlign: 'right' },
-  hourLine:       { position: 'absolute', left: TIME_COL, right: 0, top: 0, height: 1, backgroundColor: '#e5e7eb' },
-  halfLine:       { position: 'absolute', left: TIME_COL, right: 0, height: 1, backgroundColor: '#f3f4f6' },
-  tapZone:        { position: 'absolute', left: TIME_COL, right: 0 },
-  eventBlock:     { position: 'absolute', left: TIME_COL + 4, right: 6, borderRadius: 6, borderLeftWidth: 3, paddingHorizontal: 6, paddingVertical: 3, zIndex: 1 },
-  eventBlockTitle:{ fontSize: 12, fontWeight: '700' },
-  eventBlockTime: { fontSize: 10, marginTop: 1 },
+
+  // Dag-koppen
+  headerRow:      { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  headerCol:      { flex: 1, alignItems: 'center', paddingVertical: 6, borderLeftWidth: 1, borderLeftColor: '#f3f4f6' },
+  headerColToday: { backgroundColor: '#EFF6FF' },
+  headerName:     { fontSize: 11, color: '#9ca3af', fontWeight: '600' },
+  headerNum:      { fontSize: 15, color: '#111827', fontWeight: '700', marginTop: 1 },
+  headerTodayText:{ color: '#2563EB' },
+
+  // Deadline-taken strip
+  taskRow:        { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f3f4f6', paddingVertical: 3, minHeight: 24 },
+  taskRowLabel:   { fontSize: 8, fontWeight: '700', color: '#9ca3af', letterSpacing: 0.5, textTransform: 'uppercase', textAlign: 'center' },
+  taskCol:        { flex: 1, paddingHorizontal: 2, gap: 2, borderLeftWidth: 1, borderLeftColor: '#f3f4f6' },
+  taskChip:       { borderLeftWidth: 2, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 },
+  taskChipText:   { fontSize: 9, fontWeight: '600' },
+  taskMore:       { fontSize: 8, color: '#9ca3af', fontWeight: '700', paddingLeft: 3 },
+
+  // Tijdraster
+  gridRow:        { flexDirection: 'row', position: 'relative' },
+  timeLabel:      { position: 'absolute', right: 4, width: TIME_COL - 4, fontSize: 10, color: '#9ca3af', textAlign: 'right' },
+  dayCol:         { flex: 1, position: 'relative', borderLeftWidth: 1, borderLeftColor: '#e5e7eb' },
+  dayColToday:    { backgroundColor: '#F8FAFF' },
+  hourLine:       { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#eef0f2' },
+  tapZone:        { position: 'absolute', left: 0, right: 0 },
+  eventBlock:     { position: 'absolute', left: 1, right: 1, borderRadius: 4, borderLeftWidth: 2, paddingHorizontal: 3, paddingVertical: 2, overflow: 'hidden', zIndex: 1 },
+  eventBlockTitle:{ fontSize: 9, fontWeight: '700', lineHeight: 11 },
 });
