@@ -7,6 +7,7 @@ export async function loadTasks(userId) {
     .from('tasks')
     .select('*')
     .eq('user_id', userId)
+    .is('deleted_at', null)
     .order('created_at', { ascending: true });
   return (data || []).map(dbToTask);
 }
@@ -22,6 +23,12 @@ export async function addTaskDB(userId, task) {
 
 export async function updateTaskDB(task) {
   await supabase.from('tasks').update(taskToDB(task)).eq('id', task.id);
+}
+
+// Zachte verwijdering: zet deleted_at zodat de taak naar de prullenbak gaat
+// (zelfde gedrag als de web-app — taak blijft bestaan en is terug te halen)
+export async function trashTaskDB(id) {
+  await supabase.from('tasks').update({ deleted_at: new Date().toISOString() }).eq('id', id);
 }
 
 export async function deleteTaskDB(id) {

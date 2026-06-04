@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import {
   loadTasks, loadEvents, loadLists,
-  addTaskDB, updateTaskDB, deleteTaskDB,
+  addTaskDB, updateTaskDB, trashTaskDB,
   addEventDB, updateEventDB, deleteEventDB,
   addListDB, updateListDB, deleteListDB,
 } from '../db';
@@ -118,13 +118,14 @@ export function DataProvider({ userId, children }) {
     await reloadAll();
   };
 
+  // Zacht verwijderen (naar prullenbak) — consistent met de web-app, terug te halen
   const deleteTask = async (id) => {
-    await deleteTaskDB(id);
+    await trashTaskDB(id);
     await reloadAll();
   };
 
   const completeTask = async (task) => {
-    await deleteTaskDB(task.id);
+    await trashTaskDB(task.id);
     setTrash(t => [...t, { ...task, completedAt: new Date().toISOString() }]);
     await reloadAll();
   };
