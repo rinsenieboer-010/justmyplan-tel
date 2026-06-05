@@ -3,7 +3,7 @@ import {
   loadTasks, loadEvents, loadLists,
   addTaskDB, updateTaskDB, trashTaskDB,
   addEventDB, updateEventDB, deleteEventDB,
-  addListDB, updateListDB, deleteListDB,
+  upsertListDB, deleteListDB,
   loadShareLists, setShareLists,
   loadPersonColors, setPersonColorDB, removePersonColorDB,
 } from '../db';
@@ -172,9 +172,21 @@ export function DataProvider({ userId, children }) {
   const deleteEvent = async (id) => { await deleteEventDB(id); await reloadAll(); };
 
   // ── Lijsten ──
-  const addList = async (list) => { const saved = await addListDB(userId, list); setLists(l => [...l, saved]); return saved; };
-  const updateList = async (list) => { await updateListDB(list); setLists(l => l.map(x => x.id === list.id ? list : x)); };
-  const deleteList = async (id) => { await deleteListDB(id); setLists(l => l.filter(x => x.id !== id)); };
+  // Zorg dat álle eigen lijsten in de DB staan (anders resetten de andere
+  // standaardlijsten bij een reload), met de wijziging meteen toegepast.
+  const ownListObjs = () => lists.filter(l => !l.isShared).map(l => ({ id: l.id, label: l.label, color: l.color }));
+  const syncOwnLists = async (ownNext) => {
+    await Promise.all(ownNext.map(l => upsertListDB(userId, l)));
+    await reloadAll();
+  };
+  const addList = async (list) => {
+    await syncOwnLists([...ownListObjs(), { id: list.id, label: list.label, color: list.color }]);
+    return list;
+  };
+  const updateList = async (list) => {
+    await syncOwnLists(ownListObjs().map(l => l.id === list.id ? { ...l, label: list.label, color: list.color ?? l.color } : l));
+  };
+  const deleteList = async (id) => { await deleteListDB(userId, id); await reloadAll(); };
 
   // ── Delen beheren ──
   const invitePerson = async (email, permission) => {

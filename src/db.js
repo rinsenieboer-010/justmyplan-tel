@@ -139,12 +139,20 @@ export async function addListDB(userId, list) {
   return data ? dbToList(data) : list;
 }
 
+// Aanmaken óf bijwerken (per gebruiker uniek op user_id+id) — gebruikt voor
+// het persisteren van lijsten en hernoemen, ook van de standaardlijsten.
+export async function upsertListDB(userId, list) {
+  await supabase
+    .from('lists')
+    .upsert({ id: list.id, user_id: userId, label: list.label, color: list.color }, { onConflict: 'user_id,id' });
+}
+
 export async function updateListDB(list) {
   await supabase.from('lists').update({ label: list.label, color: list.color }).eq('id', list.id);
 }
 
-export async function deleteListDB(id) {
-  await supabase.from('lists').delete().eq('id', id);
+export async function deleteListDB(userId, id) {
+  await supabase.from('lists').delete().eq('user_id', userId).eq('id', id);
 }
 
 function dbToList(r) {

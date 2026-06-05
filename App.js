@@ -3,6 +3,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, ActivityIndicator, ScrollView, TouchableOpacity,
   useWindowDimensions, Modal, Alert, Clipboard, TextInput,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as WebBrowser from 'expo-web-browser';
@@ -163,6 +164,7 @@ function MainApp() {
 
         {/* ── Instellingen modal ── */}
         <Modal visible={showSettings} transparent animationType="fade" onRequestClose={() => setShowSettings(false)}>
+          <KeyboardAvoidingView style={{ flex:1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <TouchableOpacity style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center' }}
             activeOpacity={1} onPress={() => setShowSettings(false)}>
             <TouchableOpacity activeOpacity={1} style={{ backgroundColor:'#18181b', borderRadius:16, width:320, maxHeight:'88%', overflow:'hidden' }}>
@@ -175,22 +177,22 @@ function MainApp() {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={{ paddingHorizontal:24 }} contentContainerStyle={{ paddingBottom:24 }} showsVerticalScrollIndicator={false}>
+              <ScrollView style={{ paddingHorizontal:24 }} contentContainerStyle={{ paddingBottom:24 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
               {/* Account */}
               <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:10 }}>ACCOUNT</Text>
-              <View style={{ flexDirection:'row', gap:8, marginBottom:20 }}>
+              <View style={{ flexDirection:'row', gap:8, marginBottom:20, alignItems:'stretch' }}>
                 <TouchableOpacity
                   onPress={async () => {
                     await supabase.auth.resetPasswordForEmail(userEmail, { redirectTo: 'https://justmyplan.com' });
                     Alert.alert('Verstuurd', 'Check je e-mail voor de resetlink.');
                   }}
-                  style={{ flex:1, borderWidth:1, borderColor:'#3f3f46', borderRadius:8, paddingVertical:10, alignItems:'center' }}>
-                  <Text style={{ color:'#9ca3af', fontSize:13, fontWeight:'600' }}>Wachtwoord wijzigen</Text>
+                  style={{ flex:1, minHeight:46, borderWidth:1, borderColor:'#3f3f46', borderRadius:8, paddingVertical:8, paddingHorizontal:6, alignItems:'center', justifyContent:'center' }}>
+                  <Text style={{ color:'#9ca3af', fontSize:13, fontWeight:'600', textAlign:'center' }}>Wachtwoord{'\n'}wijzigen</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => { supabase.auth.signOut(); setShowSettings(false); }}
-                  style={{ flex:1, borderWidth:1, borderColor:'#3f3f46', borderRadius:8, paddingVertical:10, alignItems:'center' }}>
-                  <Text style={{ color:'#f87171', fontSize:13, fontWeight:'600' }}>Uitloggen</Text>
+                  style={{ flex:1, minHeight:46, borderWidth:1, borderColor:'#3f3f46', borderRadius:8, paddingVertical:8, paddingHorizontal:6, alignItems:'center', justifyContent:'center' }}>
+                  <Text style={{ color:'#f87171', fontSize:13, fontWeight:'600', textAlign:'center' }}>Uitloggen</Text>
                 </TouchableOpacity>
               </View>
 
@@ -339,6 +341,7 @@ function MainApp() {
               </ScrollView>
             </TouchableOpacity>
           </TouchableOpacity>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* ── Agent Management modal ── */}

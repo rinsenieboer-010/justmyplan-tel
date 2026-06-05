@@ -97,10 +97,10 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(task?.title || '');
   const [deadline, setDeadline] = useState(task?.deadline || null);
   const [priority, setPriority] = useState(task?.priority || '');
-  const [status,   setStatus]   = useState(task?.status || '');
   const [note,     setNote]     = useState(task?.note || '');
   const [list,     setList]     = useState(task?.list || 'mine');
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const status = task?.status || ''; // status-veld blijft bestaan maar wordt niet meer getoond
 
   const save = () => {
     if (!title.trim()) { Alert.alert('Voer een titel in'); return; }
@@ -108,7 +108,6 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
   };
 
   const PRIOS   = [['', '—'], ['laag', 'Laag'], ['midden', 'Midden'], ['hoog', 'Hoog']];
-  const STATUSES = [['', '—'], ['open', 'Open'], ['bezig', 'Bezig'], ['klaar', 'Klaar']];
 
   return (
     <Modal animationType="slide" transparent onRequestClose={onClose}>
@@ -157,17 +156,6 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
                 <TouchableOpacity key={val} style={[tm.chip, priority === val && { backgroundColor: PRIO_BG[val], borderColor: PRIO_COLOR[val] }]}
                   onPress={() => setPriority(val)}>
                   <Text style={[tm.chipText, priority === val && { color: PRIO_COLOR[val], fontWeight: '700' }]}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Status */}
-            <Text style={tm.label}>Status</Text>
-            <View style={tm.chipRow}>
-              {STATUSES.map(([val, label]) => (
-                <TouchableOpacity key={val} style={[tm.chip, status === val && { backgroundColor: STATUS_BG[val], borderColor: STATUS_COLOR[val] }]}
-                  onPress={() => setStatus(val)}>
-                  <Text style={[tm.chipText, status === val && { color: STATUS_COLOR[val], fontWeight: '700' }]}>{label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -278,12 +266,25 @@ const lm = StyleSheet.create({
 
 // ── TASKS SCREEN ──────────────────────────────────────────────────────────────
 export default function TasksScreen() {
-  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, deleteList } = useData();
+  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList } = useData();
   // Gedeelde lijsten tonen in de kleur van de persoon (zo zie je meteen van wie)
   const listColor = (l) => (l.isShared ? (PERSON_COLORS[personColors[l.ownerEmail]]?.dot || l.color) : l.color);
   const [activeList, setActiveList]     = useState('mine');
   const [modalTask, setModalTask]       = useState(undefined); // undefined = closed, null = new task
   const [showListModal, setShowListModal] = useState(false);
+  const [editingListId, setEditingListId] = useState(null);
+  const [editLabel, setEditLabel]         = useState('');
+
+  // Tik op een eigen, al-actieve lijst → naam bewerken; anders gewoon wisselen
+  const onTabPress = (l) => {
+    if (l.id === activeList && !l.isShared) { setEditingListId(l.id); setEditLabel(l.label); }
+    else setActiveList(l.id);
+  };
+  const commitRename = (l) => {
+    const label = editLabel.trim();
+    setEditingListId(null);
+    if (label && label !== l.label) updateList({ ...l, label });
+  };
   const [addingInline, setAddingInline] = useState(false);
   const [newTitle, setNewTitle]         = useState('');
 
@@ -317,14 +318,8 @@ export default function TasksScreen() {
   const canDeleteList = !isSharedList && lists.filter(l => !l.isShared).length > 1;
 
   const handleAddList = async (label, color) => {
-    // Als nog op defaults, sla die eerst op in DB zodat ze niet verdwijnen
-    const ownLists = lists.filter(l => !l.isShared);
-    const usingDefaults = ownLists.every(l => DEFAULT_IDS.includes(l.id));
-    if (usingDefaults) {
-      for (const l of ownLists) await addList(l);
-    }
     const newList = { id: 'list_' + Date.now(), label, color };
-    await addList(newList);
+    await addList(newList); // seedt meteen álle eigen lijsten in de DB
     setActiveList(newList.id);
     setShowListModal(false);
   };
@@ -403,11 +398,6 @@ export default function TasksScreen() {
                 style={[s.badge, dispPrio ? { backgroundColor: PRIO_BG[dispPrio] } : s.badgeEmpty]}>
                 <Text style={[s.badgeText, { color: dispPrio ? PRIO_COLOR[dispPrio] : '#9ca3af' }]}>{dispPrio || 'prio'}</Text>
               </TouchableOpacity>
-              {item.status && (
-                <View style={[s.badge, { backgroundColor: STATUS_BG[item.status] }]}>
-                  <Text style={[s.badgeText, { color: STATUS_COLOR[item.status] }]}>{item.status}</Text>
-                </View>
-              )}
             </View>
           </View>
         </View>
@@ -420,15 +410,27 @@ export default function TasksScreen() {
     <View style={s.container}>
       {/* List tabs */}
       <View style={{ flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb', alignItems: 'center' }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flex: 1 }} contentContainerStyle={s.listTabsContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flex: 1 }} contentContainerStyle={s.listTabsContent}>
           {lists.map(l => (
             <TouchableOpacity
               key={l.id}
               style={[s.listTab, activeList === l.id && { borderBottomColor: listColor(l), borderBottomWidth: 2 }]}
-              onPress={() => setActiveList(l.id)}
+              onPress={() => onTabPress(l)}
             >
               <View style={[s.listDot, { backgroundColor: listColor(l) }]} />
-              <Text style={[s.listTabText, activeList === l.id && { color: '#111827', fontWeight: '700' }]}>{l.label}</Text>
+              {editingListId === l.id ? (
+                <TextInput
+                  style={[s.listTabText, { color: '#111827', fontWeight: '700', minWidth: 60, padding: 0 }]}
+                  value={editLabel}
+                  onChangeText={setEditLabel}
+                  autoFocus
+                  returnKeyType="done"
+                  onSubmitEditing={() => commitRename(l)}
+                  onBlur={() => commitRename(l)}
+                />
+              ) : (
+                <Text style={[s.listTabText, activeList === l.id && { color: '#111827', fontWeight: '700' }]}>{l.label}</Text>
+              )}
               {l.isShared && <Ionicons name="person-outline" size={11} color="#9ca3af" />}
             </TouchableOpacity>
           ))}
@@ -449,6 +451,7 @@ export default function TasksScreen() {
         keyExtractor={item => String(item.id)}
         renderItem={renderTask}
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={s.list}
         ListEmptyComponent={
           <View style={s.emptyState}>
