@@ -391,13 +391,16 @@ export default function TasksScreen() {
                   <Text style={[s.badgeText, { color: isPast ? '#DC2626' : '#6b7280' }]}>{formatDeadline(item.deadline)}</Text>
                 </View>
               )}
-              {/* Prioriteit — tik om te wisselen (leeg → hoog → midden → laag → leeg) */}
-              <TouchableOpacity
-                disabled={!canPrio}
-                onPress={() => cyclePrio(item)}
-                style={[s.badge, dispPrio ? { backgroundColor: PRIO_BG[dispPrio] } : s.badgeEmpty]}>
-                <Text style={[s.badgeText, { color: dispPrio ? PRIO_COLOR[dispPrio] : '#9ca3af' }]}>{dispPrio || 'prio'}</Text>
-              </TouchableOpacity>
+              {/* Prioriteit — tik om te wisselen. Leeg = onzichtbaar maar nog
+                  aantikbaar (leeg → hoog → midden → laag → leeg) */}
+              {dispPrio ? (
+                <TouchableOpacity disabled={!canPrio} onPress={() => cyclePrio(item)}
+                  style={[s.badge, { backgroundColor: PRIO_BG[dispPrio] }]}>
+                  <Text style={[s.badgeText, { color: PRIO_COLOR[dispPrio] }]}>{dispPrio}</Text>
+                </TouchableOpacity>
+              ) : (canPrio && (
+                <TouchableOpacity onPress={() => cyclePrio(item)} style={s.prioEmptyTap} />
+              ))}
             </View>
           </View>
         </View>
@@ -527,7 +530,7 @@ const s = StyleSheet.create({
   taskTitle:       { fontSize: 15, color: '#111827', fontWeight: '500', marginBottom: 4 },
   taskBadges:      { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   badge:           { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
-  badgeEmpty:      { backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#e5e7eb', borderStyle: 'dashed' },
+  prioEmptyTap:    { minWidth: 30, minHeight: 18 },
   badgeText:       { fontSize: 11, fontWeight: '600' },
   inlineAddBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 6, marginTop: 2 },
   inlineAddText:   { fontSize: 14, color: '#9ca3af', fontWeight: '600' },
