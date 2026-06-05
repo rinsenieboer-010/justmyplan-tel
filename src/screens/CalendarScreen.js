@@ -198,6 +198,15 @@ export default function CalendarScreen() {
   const NEUTRAL = { dot: '#9ca3af', bg: '#F3F4F6', border: '#9ca3af', text: '#6b7280' };
   const personStyle = (email) => PERSON_COLORS[personColors[email]] || NEUTRAL;
 
+  // "Hele dag"-afspraak: omspant (vrijwel) het hele zichtbare raster → toon als
+  // chip in de hele-dag-strip i.p.v. als blok (anders staat de titel buiten beeld).
+  const evMin = (h, m) => h * 60 + m;
+  const isAllDay = (e) => evMin(e.startH, e.startM) <= HOUR_FROM * 60 && evMin(e.endH, e.endM) >= HOUR_TO * 60;
+  const hasAllDay = weekDates.some(d =>
+    events.some(e => e.date === dateKey(d) && isAllDay(e)) ||
+    sharedEvents.some(e => e.date === dateKey(d) && isAllDay(e))
+  );
+
   const prevWeek = () => { const d = new Date(weekBase); d.setDate(d.getDate() - 7); setWeekBase(d); };
   const nextWeek = () => { const d = new Date(weekBase); d.setDate(d.getDate() + 7); setWeekBase(d); };
 
@@ -259,6 +268,40 @@ export default function CalendarScreen() {
         })}
       </View>
 
+      {/* Hele-dag-afspraken strip (00:00–23:59 e.d.) */}
+      {hasAllDay && (
+        <View style={s.allDayRow}>
+          <View style={{ width: TIME_COL, justifyContent: 'center' }}>
+            <Text style={s.taskRowLabel}>dag</Text>
+          </View>
+          {weekDates.map((d, i) => {
+            const key = dateKey(d);
+            const mine = events.filter(e => e.date === key && isAllDay(e));
+            const shared = sharedEvents.filter(e => e.date === key && isAllDay(e));
+            return (
+              <View key={i} style={s.allDayCol}>
+                {mine.map(ev => (
+                  <TouchableOpacity key={ev.id} onPress={() => setModalEvent(ev)}
+                    style={[s.allDayChip, { backgroundColor: EVENT_BG[ev.color] || '#DBEAFE', borderLeftColor: EVENT_BORDER[ev.color] || '#2563EB' }]}>
+                    <Text style={[s.allDayChipText, { color: EVENT_TEXT[ev.color] || '#1d4ed8' }]} numberOfLines={1}>{ev.title}</Text>
+                  </TouchableOpacity>
+                ))}
+                {shared.map(ev => {
+                  const ps = personStyle(ev.ownerEmail);
+                  return (
+                    <TouchableOpacity key={'sh-' + ev.id}
+                      onPress={() => Alert.alert(ev.title, `${shortName(ev.ownerEmail)} · hele dag`)}
+                      style={[s.allDayChip, { backgroundColor: ps.bg, borderLeftColor: ps.border, borderStyle: 'dashed', borderWidth: 1 }]}>
+                      <Text style={[s.allDayChipText, { color: ps.text }]} numberOfLines={1}>{ev.title}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            );
+          })}
+        </View>
+      )}
+
       {/* Deadline-taken strip (alleen tonen als er taken deze week zijn) */}
       {hasAnyDeadlineTask && (
         <View style={s.taskRow}>
@@ -296,7 +339,7 @@ export default function CalendarScreen() {
           {weekDates.map((d, dayIdx) => {
             const key       = dateKey(d);
             const isToday   = key === todayKey;
-            const dayEvents = events.filter(e => e.date === key);
+            const dayEvents = events.filter(e => e.date === key && !isAllDay(e));
             return (
               <View key={dayIdx} style={[s.dayCol, isToday && s.dayColToday]}>
                 {/* Uurlijnen + klikvlakken */}
@@ -312,9 +355,10 @@ export default function CalendarScreen() {
                 ))}
 
                 {/* Gedeelde afspraken van anderen (onder, in hun persoonskleur, gestreepte rand) */}
-                {sharedEvents.filter(e => e.date === key).map(ev => {
-                  const top    = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
-                  const height = Math.max(((ev.endH - ev.startH) * 60 + (ev.endM - ev.startM)) / 60 * SLOT_H, 18);
+                {sharedEvents.filter(e => e.date === key && !isAllDay(e)).map(ev => {
+                  const rawTop = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
+                  const top    = Math.max(0, rawTop);
+                  const height = Math.max((ev.endH - HOUR_FROM + ev.endM / 60) * SLOT_H - top, 18);
                   const ps     = personStyle(ev.ownerEmail);
                   return (
                     <TouchableOpacity
@@ -330,8 +374,9 @@ export default function CalendarScreen() {
 
                 {/* Mijn afspraken (bovenop, vol gekleurd) */}
                 {dayEvents.map(ev => {
-                  const top    = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
-                  const height = Math.max(((ev.endH - ev.startH) * 60 + (ev.endM - ev.startM)) / 60 * SLOT_H, 18);
+                  const rawTop = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
+                  const top    = Math.max(0, rawTop);
+                  const height = Math.max((ev.endH - HOUR_FROM + ev.endM / 60) * SLOT_H - top, 18);
                   return (
                     <TouchableOpacity
                       key={ev.id}
@@ -386,6 +431,10 @@ const s = StyleSheet.create({
   headerTodayText:{ color: '#2563EB' },
 
   // Deadline-taken strip
+  allDayRow:      { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e7eb', paddingVertical: 3, backgroundColor: '#fafafa' },
+  allDayCol:      { flex: 1, paddingHorizontal: 2, gap: 2, borderLeftWidth: 1, borderLeftColor: '#f3f4f6' },
+  allDayChip:     { borderLeftWidth: 2, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 2 },
+  allDayChipText: { fontSize: 9, fontWeight: '700' },
   taskRow:        { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f3f4f6', paddingVertical: 3, minHeight: 24 },
   taskRowLabel:   { fontSize: 8, fontWeight: '700', color: '#9ca3af', letterSpacing: 0.5, textTransform: 'uppercase', textAlign: 'center' },
   taskCol:        { flex: 1, paddingHorizontal: 2, gap: 2, borderLeftWidth: 1, borderLeftColor: '#f3f4f6' },
