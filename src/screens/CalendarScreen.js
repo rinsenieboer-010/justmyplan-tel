@@ -320,7 +320,7 @@ export default function CalendarScreen() {
                     <TouchableOpacity
                       key={'sh-' + ev.id}
                       onPress={() => Alert.alert(ev.title, `${shortName(ev.ownerEmail)} · ${pad(ev.startH)}:${pad(ev.startM)} – ${pad(ev.endH)}:${pad(ev.endM)}`)}
-                      style={[s.sharedBlock, { top, height, backgroundColor: ps.bg, borderColor: ps.border }]}
+                      style={[s.sharedBlock, { top, height: height + 8, backgroundColor: ps.bg, borderColor: ps.border }]}
                     >
                       <Text style={[s.sharedName, { color: ps.text }]} numberOfLines={1}>{shortName(ev.ownerEmail)}</Text>
                       <Text style={[s.eventBlockTitle, { color: ps.text }]} numberOfLines={height > 34 ? 2 : 1}>{ev.title}</Text>
@@ -403,6 +403,8 @@ const s = StyleSheet.create({
   eventBlock:     { position: 'absolute', left: 1, right: 1, borderRadius: 4, borderLeftWidth: 2, paddingHorizontal: 3, paddingVertical: 2, overflow: 'hidden', zIndex: 2 },
   eventBlockTitle:{ fontSize: 9, fontWeight: '700', lineHeight: 11 },
   // Gedeelde afspraak: gestreepte rand + persoonskleur, duidelijk anders dan eigen
-  sharedBlock:    { position: 'absolute', left: 1, right: 1, borderRadius: 4, borderWidth: 1, borderStyle: 'dashed', paddingHorizontal: 3, paddingVertical: 1, overflow: 'hidden', zIndex: 1 },
+  // Gedeelde afspraak staat "achter" die van jou: smaller + iets langer, zodat
+  // de onderkant eronder uitsteekt (Google-Agenda-stijl).
+  sharedBlock:    { position: 'absolute', left: 7, right: 5, borderRadius: 4, borderWidth: 1, borderStyle: 'dashed', paddingHorizontal: 3, paddingVertical: 1, overflow: 'hidden', zIndex: 1 },
   sharedName:     { fontSize: 7, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
 });

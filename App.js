@@ -71,6 +71,12 @@ function MainApp() {
     ...sharedWithMe.map(s => s.owner_email),
   ]));
 
+  // Geselecteerde persoon voor de instellingen-in-instellingen-popup
+  const [personModalEmail, setPersonModalEmail] = useState(null);
+  const pmOut       = personModalEmail ? outgoingShares.find(s => s.invited_email === personModalEmail) : null;
+  const pmSharedIds = pmOut ? (shareListsMap[pmOut.id] || []) : [];
+  const pmColor     = personModalEmail ? personColors[personModalEmail] : null;
+
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
@@ -267,54 +273,20 @@ function MainApp() {
               )}
               {peopleEmails.map(email => {
                 const out = outgoingShares.find(s => s.invited_email === email);
-                const sharedIds = out ? (shareListsMap[out.id] || []) : [];
                 const myColor = personColors[email];
+                const dot = myColor ? PERSON_COLORS[myColor].dot : '#3f3f46';
                 return (
-                  <View key={email} style={{ backgroundColor:'#111827', borderRadius:8, padding:10, marginBottom:8 }}>
-                    <View style={{ flexDirection:'row', alignItems:'center', gap:6, marginBottom:8 }}>
-                      <Text style={{ flex:1, fontSize:12, color:'#f9fafb', fontWeight:'600' }} numberOfLines={1}>{email}</Text>
-                      {out
-                        ? <Text style={{ fontSize:10, color: out.status === 'accepted' ? '#4ade80' : '#6b7280' }}>{out.status === 'accepted' ? 'actief' : 'wacht...'}</Text>
-                        : <Text style={{ fontSize:10, color:'#6b7280' }}>deelt met jou</Text>}
-                      {out && (
-                        <TouchableOpacity onPress={() => removeShare(out.id)}>
-                          <Ionicons name="close" size={16} color="#6b7280" />
-                        </TouchableOpacity>
-                      )}
+                  <TouchableOpacity key={email} onPress={() => setPersonModalEmail(email)}
+                    style={{ flexDirection:'row', alignItems:'center', gap:10, backgroundColor:'#111827', borderRadius:8, padding:12, marginBottom:8 }}>
+                    <View style={{ width:14, height:14, borderRadius:7, backgroundColor: dot, borderWidth: myColor ? 0 : 1, borderColor:'#3f3f46' }} />
+                    <View style={{ flex:1, minWidth:0 }}>
+                      <Text style={{ color:'#f9fafb', fontSize:12, fontWeight:'600' }} numberOfLines={1}>{email}</Text>
+                      <Text style={{ color:'#6b7280', fontSize:10, marginTop:1 }}>
+                        {out ? (out.status === 'accepted' ? 'tik om in te stellen' : 'wacht op acceptatie') : 'deelt met jou'}
+                      </Text>
                     </View>
-
-                    {/* Kleur toewijzen */}
-                    <View style={{ flexDirection:'row', alignItems:'center', gap:10, marginBottom: out ? 10 : 0 }}>
-                      <Text style={{ fontSize:10, color:'#6b7280', width:44 }}>kleur</Text>
-                      {PERSON_COLOR_KEYS.map(key => (
-                        <TouchableOpacity key={key}
-                          onPress={() => setPersonColor(email, myColor === key ? null : key)}
-                          style={{ width:22, height:22, borderRadius:11, backgroundColor: PERSON_COLORS[key].dot,
-                                   borderWidth: myColor === key ? 3 : 0, borderColor:'#f9fafb' }} />
-                      ))}
-                    </View>
-
-                    {/* Welke van mijn lijsten deel ik met deze persoon */}
-                    {out && (
-                      <>
-                        <Text style={{ fontSize:10, color:'#6b7280', marginBottom:6 }}>lijsten die ik deel</Text>
-                        <View style={{ flexDirection:'row', flexWrap:'wrap', gap:6 }}>
-                          {ownLists.map(l => {
-                            const on = sharedIds.includes(l.id);
-                            return (
-                              <TouchableOpacity key={l.id} onPress={() => toggleShareList(out, l.id)}
-                                style={{ flexDirection:'row', alignItems:'center', gap:4, borderRadius:14, paddingHorizontal:10, paddingVertical:5,
-                                         backgroundColor: on ? '#2563EB' : '#27272a' }}>
-                                <View style={{ width:7, height:7, borderRadius:4, backgroundColor: l.color }} />
-                                <Text style={{ fontSize:11, color: on ? '#fff' : '#9ca3af', fontWeight:'600' }}>{on ? '✓ ' : ''}{l.label}</Text>
-                              </TouchableOpacity>
-                            );
-                          })}
-                          {ownLists.length === 0 && <Text style={{ fontSize:11, color:'#3f3f46' }}>Geen eigen lijsten</Text>}
-                        </View>
-                      </>
-                    )}
-                  </View>
+                    <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+                  </TouchableOpacity>
                 );
               })}
 
@@ -342,6 +314,77 @@ function MainApp() {
             </TouchableOpacity>
           </TouchableOpacity>
           </KeyboardAvoidingView>
+        </Modal>
+
+        {/* ── Persoon-instellingen (popup over de instellingen) ── */}
+        <Modal visible={!!personModalEmail} transparent animationType="fade" onRequestClose={() => setPersonModalEmail(null)}>
+          <TouchableOpacity style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center' }}
+            activeOpacity={1} onPress={() => setPersonModalEmail(null)}>
+            <TouchableOpacity activeOpacity={1} style={{ backgroundColor:'#18181b', borderRadius:16, width:320, maxHeight:'85%', padding:24 }}>
+              <View style={{ flexDirection:'row', alignItems:'center', marginBottom:18 }}>
+                <Text style={{ flex:1, color:'#f9fafb', fontSize:14, fontWeight:'700', marginRight:8 }} numberOfLines={1}>{personModalEmail}</Text>
+                <TouchableOpacity onPress={() => setPersonModalEmail(null)}>
+                  <Ionicons name="close" size={22} color="#9ca3af" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Kleur */}
+                <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:10 }}>KLEUR</Text>
+                <View style={{ flexDirection:'row', gap:12, marginBottom:22 }}>
+                  {PERSON_COLOR_KEYS.map(key => (
+                    <TouchableOpacity key={key}
+                      onPress={() => setPersonColor(personModalEmail, pmColor === key ? null : key)}
+                      style={{ width:30, height:30, borderRadius:15, backgroundColor: PERSON_COLORS[key].dot, borderWidth: pmColor === key ? 3 : 0, borderColor:'#f9fafb' }} />
+                  ))}
+                </View>
+
+                {pmOut ? (
+                  <>
+                    <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:6 }}>
+                      WAT KAN {(personModalEmail || '').split('@')[0].toUpperCase()} ZIEN
+                    </Text>
+                    {ownLists.map(l => {
+                      const on = pmSharedIds.includes(l.id);
+                      return (
+                        <TouchableOpacity key={l.id} onPress={() => toggleShareList(pmOut, l.id)}
+                          style={{ flexDirection:'row', alignItems:'center', gap:10, paddingVertical:11, borderBottomWidth:1, borderBottomColor:'#27272a' }}>
+                          <View style={{ width:10, height:10, borderRadius:5, backgroundColor:l.color }} />
+                          <Text style={{ flex:1, color:'#f9fafb', fontSize:14 }}>{l.label}</Text>
+                          <View style={{ width:24, height:24, borderRadius:6, borderWidth:2, borderColor: on ? '#2563EB' : '#3f3f46', backgroundColor: on ? '#2563EB' : 'transparent', justifyContent:'center', alignItems:'center' }}>
+                            {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                    {ownLists.length === 0 && <Text style={{ fontSize:12, color:'#3f3f46' }}>Je hebt nog geen eigen lijsten.</Text>}
+                    <Text style={{ fontSize:11, color:'#6b7280', marginTop:10, lineHeight:16 }}>
+                      Afspraken deel je per stuk in de agenda — kies daar wie 'm mag zien.
+                    </Text>
+
+                    <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginTop:20, marginBottom:8 }}>RECHTEN</Text>
+                    <View style={{ flexDirection:'row', gap:8, marginBottom:18 }}>
+                      {[['view','👁  Bekijken'], ['edit','✏️  Bewerken']].map(([p, label]) => (
+                        <TouchableOpacity key={p} onPress={() => updateSharePermission(pmOut.id, p)}
+                          style={{ flex:1, borderWidth:1, borderColor: pmOut.permission === p ? '#2563EB' : '#3f3f46', backgroundColor: pmOut.permission === p ? '#1e3a8a' : 'transparent', borderRadius:8, paddingVertical:10, alignItems:'center' }}>
+                          <Text style={{ color: pmOut.permission === p ? '#fff' : '#9ca3af', fontSize:12, fontWeight:'600' }}>{label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+
+                    <TouchableOpacity onPress={() => { removeShare(pmOut.id); setPersonModalEmail(null); }}
+                      style={{ borderWidth:1, borderColor:'#7f1d1d', borderRadius:8, paddingVertical:11, alignItems:'center' }}>
+                      <Text style={{ color:'#f87171', fontSize:13, fontWeight:'600' }}>Stop met delen</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <Text style={{ fontSize:12, color:'#9ca3af', lineHeight:18 }}>
+                    Deze persoon deelt met jou. Geef een kleur zodat je z'n gedeelde lijsten en afspraken herkent. Wil je zelf iets met deze persoon delen? Nodig 'm dan uit via z'n e-mailadres.
+                  </Text>
+                )}
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </Modal>
 
         {/* ── Agent Management modal ── */}
