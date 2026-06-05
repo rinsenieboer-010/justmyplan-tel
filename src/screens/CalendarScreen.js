@@ -5,11 +5,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
-import { dateKey, getTodayKey, getWeekDates, DAYS_SHORT, MONTHS, MONTHS_SHORT, pad } from '../utils';
+import { dateKey, getTodayKey, getWeekDates, DAYS_SHORT, MONTHS, MONTHS_SHORT, pad, OWN_EVENT_COLORS, PERSON_COLORS } from '../utils';
 
 const EVENT_BG     = { blue: '#DBEAFE', red: '#FEE2E2', yellow: '#FFF176', green: '#DCFCE7', purple: '#F3E8FF' };
 const EVENT_BORDER = { blue: '#2563EB', red: '#DC2626', yellow: '#E6B400', green: '#16a34a', purple: '#9333ea' };
 const EVENT_TEXT   = { blue: '#1d4ed8', red: '#b91c1c', yellow: '#92400e', green: '#15803d', purple: '#7e22ce' };
+
+// Korte weergavenaam uit e-mail (deel vóór de @)
+const shortName = (email) => (email || '').split('@')[0];
 
 const PRIO_BG    = { '': '#f3f4f6', hoog: '#FEE2E2', midden: '#FFF176', laag: '#DBEAFE' };
 const PRIO_COLOR = { '': '#9ca3af', hoog: '#DC2626', midden: '#92400e', laag: '#1d4ed8' };
@@ -57,7 +60,7 @@ const tp = StyleSheet.create({
 });
 
 // ── EVENT MODAL ───────────────────────────────────────────────────────────────
-function EventModal({ event, selectedDate, onSave, onDelete, onClose }) {
+function EventModal({ event, selectedDate, invitees = [], onSave, onDelete, onClose }) {
   const isNew = !event?.id;
   const [title,  setTitle]  = useState(event?.title  || '');
   const [startH, setStartH] = useState(event?.startH ?? 9);
@@ -66,12 +69,18 @@ function EventModal({ event, selectedDate, onSave, onDelete, onClose }) {
   const [endM,   setEndM]   = useState(event?.endM   ?? 0);
   const [color,  setColor]  = useState(event?.color  || 'blue');
   const [note,   setNote]   = useState(event?.note   || '');
+  const [sharedWith, setSharedWith] = useState(event?.sharedWith || []);
 
-  const COLORS = [['blue','#2563EB'],['red','#DC2626'],['yellow','#E6B400'],['green','#16a34a'],['purple','#9333ea']];
+  const toggleShare = (email) =>
+    setSharedWith(sw => sw.includes(email) ? sw.filter(e => e !== email) : [...sw, email]);
 
   const save = () => {
     if (!title.trim()) { Alert.alert('Voer een titel in'); return; }
-    onSave({ ...(isNew ? {} : event), title: title.trim(), date: selectedDate, startH, startM, endH, endM, color, note });
+    onSave({
+      ...(isNew ? {} : event),
+      title: title.trim(), date: selectedDate, startH, startM, endH, endM, color, note,
+      shared: sharedWith.length > 0, sharedWith,
+    });
   };
 
   return (
@@ -94,12 +103,37 @@ function EventModal({ event, selectedDate, onSave, onDelete, onClose }) {
             <TimeRow label="Tot" h={endH}   m={endM}   onChangeH={setEndH}   onChangeM={setEndM} />
             <Text style={em.label}>Kleur</Text>
             <View style={em.colorRow}>
-              {COLORS.map(([key, hex]) => (
+              {OWN_EVENT_COLORS.map(([key, hex]) => (
                 <TouchableOpacity key={key}
                   style={[em.colorDot, { backgroundColor: hex }, color === key && em.colorDotActive]}
                   onPress={() => setColor(key)} />
               ))}
             </View>
+
+            {/* Zichtbaar voor — alleen ik, of specifieke personen */}
+            {invitees.length > 0 && (
+              <>
+                <Text style={em.label}>Zichtbaar voor</Text>
+                <View style={em.shareRow}>
+                  <TouchableOpacity
+                    style={[em.shareChip, sharedWith.length === 0 && em.shareChipMe]}
+                    onPress={() => setSharedWith([])}>
+                    <Text style={[em.shareChipText, sharedWith.length === 0 && { color: '#fff' }]}>Alleen ik</Text>
+                  </TouchableOpacity>
+                  {invitees.map(email => {
+                    const on = sharedWith.includes(email);
+                    return (
+                      <TouchableOpacity key={email}
+                        style={[em.shareChip, on && em.shareChipOn]}
+                        onPress={() => toggleShare(email)}>
+                        <Text style={[em.shareChipText, on && { color: '#fff' }]}>{on ? '✓ ' : ''}{shortName(email)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
+            )}
+
             <Text style={em.label}>Notitie</Text>
             <TextInput
               style={em.noteInput}
@@ -135,6 +169,11 @@ const em = StyleSheet.create({
   colorRow:       { flexDirection: 'row', gap: 12, marginBottom: 16 },
   colorDot:       { width: 28, height: 28, borderRadius: 14, borderWidth: 3, borderColor: 'transparent' },
   colorDotActive: { borderColor: '#111827' },
+  shareRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  shareChip:      { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  shareChipMe:    { backgroundColor: '#374151', borderColor: '#374151' },
+  shareChipOn:    { backgroundColor: '#2563EB', borderColor: '#2563EB' },
+  shareChipText:  { fontSize: 13, color: '#374151', fontWeight: '600' },
   noteInput:      { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, fontSize: 14, color: '#111827', marginBottom: 16, minHeight: 70, textAlignVertical: 'top' },
   saveBtn:        { backgroundColor: '#2563EB', borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginBottom: 10 },
   saveBtnText:    { color: '#fff', fontSize: 15, fontWeight: '700' },
@@ -144,13 +183,20 @@ const em = StyleSheet.create({
 
 // ── CALENDAR SCREEN ───────────────────────────────────────────────────────────
 export default function CalendarScreen() {
-  const { tasks, events, addEvent, updateEvent, deleteEvent } = useData();
+  const { tasks, events, sharedEvents, personColors, outgoingShares, addEvent, updateEvent, deleteEvent } = useData();
   const [weekBase, setWeekBase]     = useState(new Date());
   const [modalEvent, setModalEvent] = useState(undefined);
   const scrollRef = useRef(null);
 
   const weekDates = getWeekDates(weekBase);
   const todayKey  = getTodayKey();
+
+  // Personen met wie ik kan delen (geaccepteerde uitnodigingen die ik verstuurde)
+  const invitees = (outgoingShares || []).filter(s => s.status === 'accepted').map(s => s.invited_email);
+
+  // Visuele stijl van een gedeelde afspraak op basis van de toegewezen persoonskleur
+  const NEUTRAL = { dot: '#9ca3af', bg: '#F3F4F6', border: '#9ca3af', text: '#6b7280' };
+  const personStyle = (email) => PERSON_COLORS[personColors[email]] || NEUTRAL;
 
   const prevWeek = () => { const d = new Date(weekBase); d.setDate(d.getDate() - 7); setWeekBase(d); };
   const nextWeek = () => { const d = new Date(weekBase); d.setDate(d.getDate() + 7); setWeekBase(d); };
@@ -265,7 +311,24 @@ export default function CalendarScreen() {
                   </View>
                 ))}
 
-                {/* Afspraken in deze dag */}
+                {/* Gedeelde afspraken van anderen (onder, in hun persoonskleur, gestreepte rand) */}
+                {sharedEvents.filter(e => e.date === key).map(ev => {
+                  const top    = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
+                  const height = Math.max(((ev.endH - ev.startH) * 60 + (ev.endM - ev.startM)) / 60 * SLOT_H, 18);
+                  const ps     = personStyle(ev.ownerEmail);
+                  return (
+                    <TouchableOpacity
+                      key={'sh-' + ev.id}
+                      onPress={() => Alert.alert(ev.title, `${shortName(ev.ownerEmail)} · ${pad(ev.startH)}:${pad(ev.startM)} – ${pad(ev.endH)}:${pad(ev.endM)}`)}
+                      style={[s.sharedBlock, { top, height, backgroundColor: ps.bg, borderColor: ps.border }]}
+                    >
+                      <Text style={[s.sharedName, { color: ps.text }]} numberOfLines={1}>{shortName(ev.ownerEmail)}</Text>
+                      <Text style={[s.eventBlockTitle, { color: ps.text }]} numberOfLines={height > 34 ? 2 : 1}>{ev.title}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+
+                {/* Mijn afspraken (bovenop, vol gekleurd) */}
                 {dayEvents.map(ev => {
                   const top    = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
                   const height = Math.max(((ev.endH - ev.startH) * 60 + (ev.endM - ev.startM)) / 60 * SLOT_H, 18);
@@ -298,6 +361,7 @@ export default function CalendarScreen() {
         <EventModal
           event={modalEvent}
           selectedDate={modalEvent?.date || todayKey}
+          invitees={invitees}
           onSave={handleSave}
           onDelete={async (id) => { await deleteEvent(id); setModalEvent(undefined); }}
           onClose={() => setModalEvent(undefined)}
@@ -336,6 +400,9 @@ const s = StyleSheet.create({
   dayColToday:    { backgroundColor: '#F8FAFF' },
   hourLine:       { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#eef0f2' },
   tapZone:        { position: 'absolute', left: 0, right: 0 },
-  eventBlock:     { position: 'absolute', left: 1, right: 1, borderRadius: 4, borderLeftWidth: 2, paddingHorizontal: 3, paddingVertical: 2, overflow: 'hidden', zIndex: 1 },
+  eventBlock:     { position: 'absolute', left: 1, right: 1, borderRadius: 4, borderLeftWidth: 2, paddingHorizontal: 3, paddingVertical: 2, overflow: 'hidden', zIndex: 2 },
   eventBlockTitle:{ fontSize: 9, fontWeight: '700', lineHeight: 11 },
+  // Gedeelde afspraak: gestreepte rand + persoonskleur, duidelijk anders dan eigen
+  sharedBlock:    { position: 'absolute', left: 1, right: 1, borderRadius: 4, borderWidth: 1, borderStyle: 'dashed', paddingHorizontal: 3, paddingVertical: 1, overflow: 'hidden', zIndex: 1 },
+  sharedName:     { fontSize: 7, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
 });

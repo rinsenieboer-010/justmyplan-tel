@@ -4,6 +4,8 @@ import {
   addTaskDB, updateTaskDB, trashTaskDB,
   addEventDB, updateEventDB, deleteEventDB,
   addListDB, updateListDB, deleteListDB,
+  loadShareLists, setShareLists,
+  loadPersonColors, setPersonColorDB, removePersonColorDB,
 } from '../db';
 import { supabase } from '../supabase';
 
@@ -31,43 +33,54 @@ export function parseSharedId(id) {
 
 export function DataProvider({ userId, children }) {
   const [tasks,  setTasks]  = useState([]);
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState([]);          // eigen afspraken
+  const [sharedEvents, setSharedEvents] = useState([]); // afspraken van anderen
   const [lists,  setLists]  = useState(DEFAULT_LISTS);
   const [trash,  setTrash]  = useState([]);
 
+  const [personColors,  setPersonColors]  = useState({}); // email -> kleur-key
+  const [outgoingShares, setOutgoingShares] = useState([]); // shares waar ik eigenaar ben
+  const [incomingShares, setIncomingShares] = useState([]); // openstaande uitnodigingen aan mij
+  const [sharedWithMe,   setSharedWithMe]   = useState([]); // geaccepteerde shares waarin ik uitgenodigd ben
+  const [shareListsMap, setShareListsMap]   = useState({}); // shareId -> [listId,...] (mijn uitgaande)
+
   const reloadAll = useCallback(async () => {
-    // Eigen data + shares parallel laden (getSession leest lokaal, geen extra network call)
     const { data: { session } } = await supabase.auth.getSession();
     const userEmail = session?.user?.email;
 
-    const [t, ev, ls, sharesResult] = await Promise.all([
+    const [t, ev, ls, pcs, incomingRes, outgoingRes] = await Promise.all([
       loadTasks(userId),
       loadEvents(userId),
       loadLists(userId),
+      loadPersonColors(userId),
       userEmail
         ? supabase.from('shares').select('*').eq('invited_email', userEmail).eq('status', 'accepted')
         : Promise.resolve({ data: [] }),
+      supabase.from('shares').select('*').eq('owner_id', userId),
     ]);
 
-    const shares = sharesResult.data || [];
+    // Personenkleuren als map
+    const colorMap = {};
+    pcs.forEach(({ email, color }) => { colorMap[email] = color; });
 
-    // Data van elke share-eigenaar laden
+    // ── Gedeeld MET mij: lijsten (uit share_lists) + taken + afspraken per eigenaar
+    const accepted = incomingRes.data || [];
     const sharedResults = await Promise.all(
-      shares.map(async (share) => {
-        const [sTasks, sLists] = await Promise.all([
-          loadTasks(share.owner_id),
-          loadLists(share.owner_id),
+      accepted.map(async (share) => {
+        const [shareLists, sTasks, sEvents] = await Promise.all([
+          loadShareLists(share.id),     // welke lijsten deelt deze eigenaar met mij
+          loadTasks(share.owner_id),    // RLS beperkt tot gedeelde lijsten
+          loadEvents(share.owner_id),   // RLS beperkt tot afspraken die met mij gedeeld zijn
         ]);
-        return { share, sTasks: sTasks || [], sLists };
+        return { share, shareLists, sTasks, sEvents };
       })
     );
 
-    // Lijsten samenvoegen: eigen + gedeeld (met prefix)
-    const ownLists = ls || DEFAULT_LISTS;
-    const sharedLists = sharedResults.flatMap(({ share, sLists }) =>
-      (sLists || DEFAULT_LISTS).map(l => ({
-        ...l,
-        id: prefixSharedId(share.owner_id, l.id),
+    const sharedLists = sharedResults.flatMap(({ share, shareLists }) =>
+      shareLists.map(l => ({
+        id: prefixSharedId(share.owner_id, l.listId),
+        label: l.label || 'Gedeeld',
+        color: l.color || '#9ca3af',
         isShared: true,
         ownerId: share.owner_id,
         ownerEmail: share.owner_email,
@@ -75,36 +88,69 @@ export function DataProvider({ userId, children }) {
       }))
     );
 
-    // Taken samenvoegen: eigen + gedeeld (met prefix op list-veld)
     const sharedTasks = sharedResults.flatMap(({ share, sTasks }) =>
       sTasks.map(task => ({
         ...task,
         list: prefixSharedId(share.owner_id, task.list || 'mine'),
         isShared: true,
         ownerId: share.owner_id,
+        ownerEmail: share.owner_email,
         permission: share.permission,
       }))
     );
 
+    const allSharedEvents = sharedResults.flatMap(({ share, sEvents }) =>
+      sEvents.map(e => ({
+        ...e,
+        isShared: true,
+        ownerId: share.owner_id,
+        ownerEmail: share.owner_email,
+      }))
+    );
+
+    // ── Gedeeld DOOR mij: huidige lijst-selectie per uitgaande share (voor instellingen)
+    const outgoing = outgoingRes.data || [];
+    const slMap = {};
+    await Promise.all(outgoing.map(async (share) => {
+      const sl = await loadShareLists(share.id);
+      slMap[share.id] = sl.map(x => x.listId);
+    }));
+
+    const ownLists = ls || DEFAULT_LISTS;
+
     setTasks([...t, ...sharedTasks]);
     setEvents(ev);
+    setSharedEvents(allSharedEvents);
     setLists([...ownLists, ...sharedLists]);
+    setPersonColors(colorMap);
+    setOutgoingShares(outgoing);
+    setSharedWithMe(accepted);
+    setShareListsMap(slMap);
+
+    // Openstaande uitnodigingen aan mij
+    if (userEmail) {
+      const { data: pend } = await supabase.from('shares')
+        .select('*').eq('invited_email', userEmail).eq('status', 'pending');
+      setIncomingShares(pend || []);
+    }
   }, [userId]);
 
   useEffect(() => { reloadAll(); }, [reloadAll]);
 
-  // Realtime: eigen data
+  // Realtime: eigen data + gedeelde wijzigingen
   useEffect(() => {
     const ch = supabase
       .channel(`user-data-${userId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks',  filter: `user_id=eq.${userId}` }, reloadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'events', filter: `user_id=eq.${userId}` }, reloadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lists',  filter: `user_id=eq.${userId}` }, reloadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks'  }, reloadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'events' }, reloadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'lists'  }, reloadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'share_lists' }, reloadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shares' }, reloadAll)
       .subscribe();
     return () => supabase.removeChannel(ch);
   }, [userId, reloadAll]);
 
-  // Taken toevoegen: ownerId meegeven voor gedeelde lijsten
+  // ── Taken ──
   const addTask = async (task, ownerId) => {
     const targetId = ownerId || userId;
     const parsed = ownerId ? parseSharedId(task.list) : null;
@@ -112,62 +158,63 @@ export function DataProvider({ userId, children }) {
     await addTaskDB(targetId, dbTask);
     await reloadAll();
   };
-
-  const updateTask = async (task) => {
-    await updateTaskDB(task);
-    await reloadAll();
-  };
-
-  // Zacht verwijderen (naar prullenbak) — consistent met de web-app, terug te halen
-  const deleteTask = async (id) => {
-    await trashTaskDB(id);
-    await reloadAll();
-  };
-
+  const updateTask = async (task) => { await updateTaskDB(task); await reloadAll(); };
+  const deleteTask = async (id) => { await trashTaskDB(id); await reloadAll(); };
   const completeTask = async (task) => {
     await trashTaskDB(task.id);
     setTrash(t => [...t, { ...task, completedAt: new Date().toISOString() }]);
     await reloadAll();
   };
 
-  const addEvent = async (event) => {
-    const saved = await addEventDB(userId, event);
-    setEvents(e => [...e, saved]);
-    return saved;
+  // ── Afspraken ──
+  const addEvent = async (event) => { const saved = await addEventDB(userId, event); await reloadAll(); return saved; };
+  const updateEvent = async (event) => { await updateEventDB(event); await reloadAll(); };
+  const deleteEvent = async (id) => { await deleteEventDB(id); await reloadAll(); };
+
+  // ── Lijsten ──
+  const addList = async (list) => { const saved = await addListDB(userId, list); setLists(l => [...l, saved]); return saved; };
+  const updateList = async (list) => { await updateListDB(list); setLists(l => l.map(x => x.id === list.id ? list : x)); };
+  const deleteList = async (id) => { await deleteListDB(id); setLists(l => l.filter(x => x.id !== id)); };
+
+  // ── Delen beheren ──
+  const invitePerson = async (email, permission) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    await supabase.from('shares').insert({
+      owner_id: userId, owner_email: session?.user?.email,
+      invited_email: email.trim().toLowerCase(), permission,
+    });
+    await reloadAll();
+  };
+  const removeShare = async (id) => { await supabase.from('shares').delete().eq('id', id); await reloadAll(); };
+  const updateSharePermission = async (id, permission) => {
+    await supabase.from('shares').update({ permission }).eq('id', id); await reloadAll();
+  };
+  const acceptInvitation = async (id) => { await supabase.from('shares').update({ status: 'accepted' }).eq('id', id); await reloadAll(); };
+  const declineInvitation = async (id) => { await supabase.from('shares').update({ status: 'declined' }).eq('id', id); await reloadAll(); };
+
+  // Welke van mijn lijsten deel ik met deze share (lijst van objecten)
+  const saveShareLists = async (shareId, listObjs) => {
+    await setShareLists(shareId, listObjs);
+    await reloadAll();
   };
 
-  const updateEvent = async (event) => {
-    await updateEventDB(event);
-    setEvents(e => e.map(x => x.id === event.id ? event : x));
-  };
-
-  const deleteEvent = async (id) => {
-    await deleteEventDB(id);
-    setEvents(e => e.filter(x => x.id !== id));
-  };
-
-  const addList = async (list) => {
-    const saved = await addListDB(userId, list);
-    setLists(l => [...l, saved]);
-    return saved;
-  };
-
-  const updateList = async (list) => {
-    await updateListDB(list);
-    setLists(l => l.map(x => x.id === list.id ? list : x));
-  };
-
-  const deleteList = async (id) => {
-    await deleteListDB(id);
-    setLists(l => l.filter(x => x.id !== id));
+  // Kleur toewijzen aan een persoon (of wissen met null)
+  const setPersonColor = async (email, color) => {
+    if (color) await setPersonColorDB(userId, email, color);
+    else await removePersonColorDB(userId, email);
+    await reloadAll();
   };
 
   return (
     <DataContext.Provider value={{
-      tasks, events, lists, trash, userId,
+      tasks, events, sharedEvents, lists, trash, userId,
+      personColors, outgoingShares, incomingShares, sharedWithMe, shareListsMap,
       addTask, updateTask, deleteTask, completeTask,
       addEvent, updateEvent, deleteEvent,
       addList, updateList, deleteList,
+      invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,
+      saveShareLists, setPersonColor,
+      refresh: reloadAll,
     }}>
       {children}
     </DataContext.Provider>

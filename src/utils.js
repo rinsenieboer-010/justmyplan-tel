@@ -33,3 +33,19 @@ export const PRIO_COLOR = { '': '#9ca3af', hoog: '#DC2626', midden: '#E6B400', l
 export const PRIO_BG    = { '': '#f3f4f6', hoog: '#FEE2E2', midden: '#FFF176', laag: '#DBEAFE' };
 export const STATUS_COLOR = { '': '#9ca3af', open: '#2563EB', bezig: '#E6B400', klaar: '#16a34a' };
 export const STATUS_BG    = { '': '#f3f4f6', open: '#DBEAFE', bezig: '#FFF176', klaar: '#dcfce7' };
+
+// Eigen items: alleen primaire kleuren (3)
+export const OWN_EVENT_COLORS = [
+  ['blue',   '#2563EB'],
+  ['red',    '#DC2626'],
+  ['yellow', '#E6B400'],
+];
+
+// Secundaire kleuren — uitsluitend voor uitgenodigde personen (toegewezen in instellingen)
+export const PERSON_COLOR_KEYS = ['zwart', 'oranje', 'paars', 'groen'];
+export const PERSON_COLORS = {
+  zwart:  { dot: '#111827', bg: '#E5E7EB', border: '#111827', text: '#111827' },
+  oranje: { dot: '#EA580C', bg: '#FFEDD5', border: '#EA580C', text: '#9A3412' },
+  paars:  { dot: '#9333EA', bg: '#F3E8FF', border: '#9333EA', text: '#6B21A8' },
+  groen:  { dot: '#16A34A', bg: '#DCFCE7', border: '#15803D', text: '#15803D' },
+};

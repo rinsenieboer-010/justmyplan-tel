@@ -8,7 +8,8 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import * as WebBrowser from 'expo-web-browser';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from './src/supabase';
-import { DataProvider } from './src/context/DataContext';
+import { DataProvider, useData } from './src/context/DataContext';
+import { PERSON_COLOR_KEYS, PERSON_COLORS } from './src/utils';
 import LoginScreen from './src/screens/LoginScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
@@ -38,13 +39,34 @@ function MainApp() {
   const [current, setCurrent]       = useState(0);
   const [showSettings, setShowSettings]     = useState(false);
   const [apiKey, setApiKey]               = useState(null);
-  const [outgoingShares, setOutgoingShares] = useState([]);
-  const [incomingShares, setIncomingShares] = useState([]);
   const [inviteEmail, setInviteEmail]     = useState('');
   const [invitePermission, setInvitePermission] = useState('view');
   const [userEmail, setUserEmail]         = useState('');
   const HEADER_H                    = 50;
   const pageH                       = windowHeight - HEADER_H - insets.top - insets.bottom;
+
+  // Deel-state komt uit DataContext (gecentraliseerd)
+  const {
+    lists, outgoingShares, incomingShares, sharedWithMe, shareListsMap, personColors,
+    invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,
+    saveShareLists, setPersonColor,
+  } = useData();
+
+  const ownLists = lists.filter(l => !l.isShared);
+
+  // Welke van mijn lijsten deel ik met deze share aan/uit
+  const toggleShareList = (share, listId) => {
+    const current = shareListsMap[share.id] || [];
+    const nextIds = current.includes(listId) ? current.filter(x => x !== listId) : [...current, listId];
+    const objs = ownLists.filter(l => nextIds.includes(l.id)).map(l => ({ id: l.id, label: l.label, color: l.color }));
+    saveShareLists(share.id, objs);
+  };
+
+  // Unieke lijst van personen waar ik een relatie mee heb (ik→hen of hen→ik)
+  const peopleEmails = Array.from(new Set([
+    ...outgoingShares.map(s => s.invited_email),
+    ...sharedWithMe.map(s => s.owner_email),
+  ]));
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -55,46 +77,10 @@ function MainApp() {
     });
   }, []);
 
-  useEffect(() => {
-    if (!showSettings || !userEmail) return;
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      supabase.from('shares').select('*').eq('owner_id', user.id)
-        .then(({ data }) => setOutgoingShares(data || []));
-      supabase.from('shares').select('*').eq('invited_email', user.email).eq('status', 'pending')
-        .then(({ data }) => setIncomingShares(data || []));
-    });
-  }, [showSettings, userEmail]);
-
-  const invitePerson = async () => {
+  const handleInvite = async () => {
     if (!inviteEmail.trim()) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    const email = inviteEmail.trim().toLowerCase();
-    const { data, error } = await supabase.from('shares').insert({
-      owner_id: user.id, owner_email: user.email,
-      invited_email: email, permission: invitePermission,
-    }).select().single();
-    if (!error && data) { setOutgoingShares(s => [...s, data]); setInviteEmail(''); }
-  };
-
-  const removeShare = async (id) => {
-    await supabase.from('shares').delete().eq('id', id);
-    setOutgoingShares(s => s.filter(x => x.id !== id));
-  };
-
-  const updateSharePermission = async (id, permission) => {
-    await supabase.from('shares').update({ permission }).eq('id', id);
-    setOutgoingShares(s => s.map(x => x.id === id ? { ...x, permission } : x));
-  };
-
-  const acceptInvitation = async (id) => {
-    await supabase.from('shares').update({ status: 'accepted' }).eq('id', id);
-    setIncomingShares(s => s.filter(x => x.id !== id));
-  };
-
-  const declineInvitation = async (id) => {
-    await supabase.from('shares').update({ status: 'declined' }).eq('id', id);
-    setIncomingShares(s => s.filter(x => x.id !== id));
+    await invitePerson(inviteEmail, invitePermission);
+    setInviteEmail('');
   };
 
   const generateApiKey = async () => {
@@ -177,15 +163,17 @@ function MainApp() {
         <Modal visible={showSettings} transparent animationType="fade" onRequestClose={() => setShowSettings(false)}>
           <TouchableOpacity style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center' }}
             activeOpacity={1} onPress={() => setShowSettings(false)}>
-            <TouchableOpacity activeOpacity={1} style={{ backgroundColor:'#18181b', borderRadius:16, width:320, padding:24 }}>
+            <TouchableOpacity activeOpacity={1} style={{ backgroundColor:'#18181b', borderRadius:16, width:320, maxHeight:'88%', overflow:'hidden' }}>
 
-              {/* Header */}
-              <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              {/* Header (vast) */}
+              <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center', paddingHorizontal:24, paddingTop:24, paddingBottom:16 }}>
                 <Text style={{ color:'#f9fafb', fontSize:16, fontWeight:'700' }}>⚙  Instellingen</Text>
                 <TouchableOpacity onPress={() => setShowSettings(false)}>
                   <Ionicons name="close" size={22} color="#9ca3af" />
                 </TouchableOpacity>
               </View>
+
+              <ScrollView style={{ paddingHorizontal:24 }} contentContainerStyle={{ paddingBottom:24 }} showsVerticalScrollIndicator={false}>
 
               {/* Account */}
               <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:10 }}>ACCOUNT</Text>
@@ -241,43 +229,76 @@ function MainApp() {
               {/* ── Delen ── */}
               <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:12 }}>DELEN</Text>
 
-              <Text style={{ fontSize:12, color:'#9ca3af', fontWeight:'600', marginBottom:8 }}>Gedeeld door mij</Text>
-              {outgoingShares.length === 0 && (
-                <Text style={{ fontSize:12, color:'#3f3f46', marginBottom:10 }}>Nog niemand uitgenodigd</Text>
-              )}
-              {outgoingShares.map(s => (
-                <View key={s.id} style={{ flexDirection:'row', alignItems:'center', backgroundColor:'#111827', borderRadius:8, padding:10, marginBottom:6, gap:6 }}>
-                  <Text style={{ flex:1, fontSize:11, color:'#9ca3af' }} numberOfLines={1}>{s.invited_email}</Text>
-                  <Text style={{ fontSize:10, color: s.status === 'accepted' ? '#4ade80' : '#6b7280' }}>
-                    {s.status === 'accepted' ? 'actief' : 'wacht...'}
-                  </Text>
-                  <TouchableOpacity onPress={() => updateSharePermission(s.id, s.permission === 'view' ? 'edit' : 'view')}
-                    style={{ backgroundColor:'#27272a', borderRadius:6, padding:6 }}>
-                    <Text style={{ fontSize:14 }}>{s.permission === 'view' ? '👁' : '✏️'}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => removeShare(s.id)}>
-                    <Ionicons name="close" size={16} color="#6b7280" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-
               {/* Uitnodigen */}
-              <View style={{ flexDirection:'row', gap:6, marginTop:8 }}>
+              <View style={{ flexDirection:'row', gap:6, marginBottom:14 }}>
                 <TextInput
                   style={{ flex:1, backgroundColor:'#111827', borderWidth:1, borderColor:'#3f3f46', borderRadius:6, paddingHorizontal:10, paddingVertical:7, fontSize:12, color:'#f9fafb' }}
-                  placeholder="e-mailadres..." placeholderTextColor="#6b7280"
+                  placeholder="e-mailadres uitnodigen..." placeholderTextColor="#6b7280"
                   value={inviteEmail} onChangeText={setInviteEmail}
                   keyboardType="email-address" autoCapitalize="none"
                 />
-                <TouchableOpacity onPress={() => setInvitePermission(p => p === 'view' ? 'edit' : 'view')}
-                  style={{ backgroundColor:'#27272a', borderRadius:6, paddingHorizontal:10, justifyContent:'center' }}>
-                  <Text style={{ fontSize:14 }}>{invitePermission === 'view' ? '👁' : '✏️'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={invitePerson}
+                <TouchableOpacity onPress={handleInvite}
                   style={{ backgroundColor:'#2563EB', borderRadius:6, paddingHorizontal:12, justifyContent:'center' }}>
                   <Text style={{ color:'#fff', fontSize:12, fontWeight:'600' }}>Uitnodigen</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Personen: kleur + welke lijsten ik deel */}
+              {peopleEmails.length === 0 && (
+                <Text style={{ fontSize:12, color:'#3f3f46', marginBottom:10 }}>Nog niemand. Nodig iemand uit via e-mail.</Text>
+              )}
+              {peopleEmails.map(email => {
+                const out = outgoingShares.find(s => s.invited_email === email);
+                const sharedIds = out ? (shareListsMap[out.id] || []) : [];
+                const myColor = personColors[email];
+                return (
+                  <View key={email} style={{ backgroundColor:'#111827', borderRadius:8, padding:10, marginBottom:8 }}>
+                    <View style={{ flexDirection:'row', alignItems:'center', gap:6, marginBottom:8 }}>
+                      <Text style={{ flex:1, fontSize:12, color:'#f9fafb', fontWeight:'600' }} numberOfLines={1}>{email}</Text>
+                      {out
+                        ? <Text style={{ fontSize:10, color: out.status === 'accepted' ? '#4ade80' : '#6b7280' }}>{out.status === 'accepted' ? 'actief' : 'wacht...'}</Text>
+                        : <Text style={{ fontSize:10, color:'#6b7280' }}>deelt met jou</Text>}
+                      {out && (
+                        <TouchableOpacity onPress={() => removeShare(out.id)}>
+                          <Ionicons name="close" size={16} color="#6b7280" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Kleur toewijzen */}
+                    <View style={{ flexDirection:'row', alignItems:'center', gap:10, marginBottom: out ? 10 : 0 }}>
+                      <Text style={{ fontSize:10, color:'#6b7280', width:44 }}>kleur</Text>
+                      {PERSON_COLOR_KEYS.map(key => (
+                        <TouchableOpacity key={key}
+                          onPress={() => setPersonColor(email, myColor === key ? null : key)}
+                          style={{ width:22, height:22, borderRadius:11, backgroundColor: PERSON_COLORS[key].dot,
+                                   borderWidth: myColor === key ? 3 : 0, borderColor:'#f9fafb' }} />
+                      ))}
+                    </View>
+
+                    {/* Welke van mijn lijsten deel ik met deze persoon */}
+                    {out && (
+                      <>
+                        <Text style={{ fontSize:10, color:'#6b7280', marginBottom:6 }}>lijsten die ik deel</Text>
+                        <View style={{ flexDirection:'row', flexWrap:'wrap', gap:6 }}>
+                          {ownLists.map(l => {
+                            const on = sharedIds.includes(l.id);
+                            return (
+                              <TouchableOpacity key={l.id} onPress={() => toggleShareList(out, l.id)}
+                                style={{ flexDirection:'row', alignItems:'center', gap:4, borderRadius:14, paddingHorizontal:10, paddingVertical:5,
+                                         backgroundColor: on ? '#2563EB' : '#27272a' }}>
+                                <View style={{ width:7, height:7, borderRadius:4, backgroundColor: l.color }} />
+                                <Text style={{ fontSize:11, color: on ? '#fff' : '#9ca3af', fontWeight:'600' }}>{on ? '✓ ' : ''}{l.label}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                          {ownLists.length === 0 && <Text style={{ fontSize:11, color:'#3f3f46' }}>Geen eigen lijsten</Text>}
+                        </View>
+                      </>
+                    )}
+                  </View>
+                );
+              })}
 
               {/* Binnenkomende uitnodigingen */}
               {incomingShares.length > 0 && (
@@ -299,6 +320,7 @@ function MainApp() {
                   ))}
                 </>
               )}
+              </ScrollView>
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>

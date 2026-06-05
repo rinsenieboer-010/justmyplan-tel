@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
-import { formatDeadline, getTodayKey, dateKey, MONTHS, MONTHS_SHORT, DAYS_SHORT, PRIO_COLOR, PRIO_BG, STATUS_COLOR, STATUS_BG } from '../utils';
+import { formatDeadline, getTodayKey, dateKey, MONTHS, MONTHS_SHORT, DAYS_SHORT, PRIO_COLOR, PRIO_BG, STATUS_COLOR, STATUS_BG, PERSON_COLORS } from '../utils';
 
 // ── DATE PICKER ───────────────────────────────────────────────────────────────
 function DatePickerModal({ value, onSelect, onClose }) {
@@ -278,7 +278,9 @@ const lm = StyleSheet.create({
 
 // ── TASKS SCREEN ──────────────────────────────────────────────────────────────
 export default function TasksScreen() {
-  const { tasks, lists, addTask, updateTask, deleteTask, completeTask, addList, deleteList } = useData();
+  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, deleteList } = useData();
+  // Gedeelde lijsten tonen in de kleur van de persoon (zo zie je meteen van wie)
+  const listColor = (l) => (l.isShared ? (PERSON_COLORS[personColors[l.ownerEmail]]?.dot || l.color) : l.color);
   const [activeList, setActiveList]     = useState('mine');
   const [modalTask, setModalTask]       = useState(undefined); // undefined = closed, null = new task
   const [showListModal, setShowListModal] = useState(false);
@@ -380,10 +382,10 @@ export default function TasksScreen() {
           {lists.map(l => (
             <TouchableOpacity
               key={l.id}
-              style={[s.listTab, activeList === l.id && { borderBottomColor: l.color, borderBottomWidth: 2 }]}
+              style={[s.listTab, activeList === l.id && { borderBottomColor: listColor(l), borderBottomWidth: 2 }]}
               onPress={() => setActiveList(l.id)}
             >
-              <View style={[s.listDot, { backgroundColor: l.color }]} />
+              <View style={[s.listDot, { backgroundColor: listColor(l) }]} />
               <Text style={[s.listTabText, activeList === l.id && { color: '#111827', fontWeight: '700' }]}>{l.label}</Text>
               {l.isShared && <Ionicons name="person-outline" size={11} color="#9ca3af" />}
             </TouchableOpacity>
