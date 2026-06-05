@@ -14,6 +14,7 @@ import LoginScreen from './src/screens/LoginScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
 import AIScreen from './src/screens/AIScreen';
+import AgentsModal from './src/screens/AgentsModal';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -38,6 +39,7 @@ function MainApp() {
   const isJumping                   = useRef(false);
   const [current, setCurrent]       = useState(0);
   const [showSettings, setShowSettings]     = useState(false);
+  const [showAgents, setShowAgents]         = useState(false);
   const [apiKey, setApiKey]               = useState(null);
   const [inviteEmail, setInviteEmail]     = useState('');
   const [invitePermission, setInvitePermission] = useState('view');
@@ -194,6 +196,20 @@ function MainApp() {
 
               <View style={{ height:1, backgroundColor:'#27272a', marginBottom:20 }} />
 
+              {/* Agent Management */}
+              <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:10 }}>AGENTS</Text>
+              <TouchableOpacity onPress={() => { setShowSettings(false); setShowAgents(true); }}
+                style={{ flexDirection:'row', alignItems:'center', gap:10, backgroundColor:'#111827', borderRadius:8, padding:12, marginBottom:20 }}>
+                <Text style={{ fontSize:18 }}>⚡</Text>
+                <View style={{ flex:1 }}>
+                  <Text style={{ color:'#f9fafb', fontSize:13, fontWeight:'600' }}>Agent Management</Text>
+                  <Text style={{ color:'#6b7280', fontSize:11, marginTop:1 }}>Stuur een bericht naar je agents</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+              </TouchableOpacity>
+
+              <View style={{ height:1, backgroundColor:'#27272a', marginBottom:20 }} />
+
               {/* API */}
               <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:10 }}>API TOEGANG</Text>
               <Text style={{ fontSize:12, color:'#6b7280', marginBottom:12, lineHeight:18 }}>
@@ -324,6 +340,9 @@ function MainApp() {
             </TouchableOpacity>
           </TouchableOpacity>
         </Modal>
+
+        {/* ── Agent Management modal ── */}
+        <AgentsModal visible={showAgents} onClose={() => setShowAgents(false)} />
 
         {/* ── Positie-indicator (rechts) ── */}
         <View style={{ position: 'absolute', right: 10, top: '50%', marginTop: -26, gap: 8, pointerEvents: 'none' }}>

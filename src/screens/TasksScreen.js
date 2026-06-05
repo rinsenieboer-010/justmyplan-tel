@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform,
@@ -284,6 +284,32 @@ export default function TasksScreen() {
   const [activeList, setActiveList]     = useState('mine');
   const [modalTask, setModalTask]       = useState(undefined); // undefined = closed, null = new task
   const [showListModal, setShowListModal] = useState(false);
+  const [addingInline, setAddingInline] = useState(false);
+  const [newTitle, setNewTitle]         = useState('');
+
+  // Prioriteit via tikken (zoals web): override = wat je ziet, frozen = sorteer-positie
+  // die vastblijft terwijl je doorklikt, en pas na 2s naar de nieuwe plek schuift.
+  const [prioOverride, setPrioOverride] = useState({});
+  const [frozenPrio, setFrozenPrio]     = useState({});
+  const prioTimers = useRef({});
+  const PRIO_NEXT = { '': 'hoog', hoog: 'midden', midden: 'laag', laag: '' };
+  const PRIO_RANK = { hoog: 0, midden: 1, laag: 2, '': 3 };
+
+  const cyclePrio = (task) => {
+    if (task.isShared) return; // prioriteit beheer je op je eigen taken
+    const id = task.id;
+    const cur = prioOverride[id] ?? task.priority ?? '';
+    const next = PRIO_NEXT[cur] ?? 'hoog';
+    setPrioOverride(o => ({ ...o, [id]: next }));
+    setFrozenPrio(f => (f[id] !== undefined ? f : { ...f, [id]: task.priority || '' }));
+    updateTask({ ...task, priority: next });
+    if (prioTimers.current[id]) clearTimeout(prioTimers.current[id]);
+    prioTimers.current[id] = setTimeout(() => {
+      setFrozenPrio(f => { const n = { ...f }; delete n[id]; return n; });
+      setPrioOverride(o => { const n = { ...o }; delete n[id]; return n; });
+      delete prioTimers.current[id];
+    }, 2000);
+  };
 
   const activeListObj = lists.find(l => l.id === activeList) || lists[0];
   const isSharedList  = activeListObj?.isShared === true;
@@ -313,14 +339,26 @@ export default function TasksScreen() {
     ]);
   };
 
+  // Eerst op datum (vroegste boven, geen datum onderaan), dan binnen dezelfde
+  // datumgroep op prioriteit (hoog → midden → laag → geen).
   const visibleTasks = tasks
     .filter(t => (t.list || 'mine') === activeList)
     .sort((a, b) => {
-      if (!a.deadline && !b.deadline) return 0;
-      if (!a.deadline) return 1;
-      if (!b.deadline) return -1;
-      return a.deadline.localeCompare(b.deadline);
+      if (a.deadline && b.deadline) { if (a.deadline !== b.deadline) return a.deadline < b.deadline ? -1 : 1; }
+      else if (a.deadline && !b.deadline) return -1;
+      else if (!a.deadline && b.deadline) return 1;
+      const pa = frozenPrio[a.id] !== undefined ? frozenPrio[a.id] : (a.priority || '');
+      const pb = frozenPrio[b.id] !== undefined ? frozenPrio[b.id] : (b.priority || '');
+      return (PRIO_RANK[pa] ?? 3) - (PRIO_RANK[pb] ?? 3);
     });
+
+  const submitInline = async () => {
+    const title = newTitle.trim();
+    if (!title) { setAddingInline(false); return; }
+    const ownerId = isSharedList ? activeListObj.ownerId : null;
+    setNewTitle('');
+    await addTask({ title, priority: '', status: '', deadline: null, list: activeList }, ownerId);
+  };
 
   const handleSave = async (taskData) => {
     if (taskData.id) {
@@ -342,6 +380,8 @@ export default function TasksScreen() {
 
   const renderTask = ({ item }) => {
     const isPast = item.deadline && item.deadline < getTodayKey();
+    const canPrio = !item.isShared;
+    const dispPrio = prioOverride[item.id] ?? item.priority ?? '';
     return (
       <TouchableOpacity style={s.taskCard} onPress={() => (!item.isShared || item.permission === 'edit') ? setModalTask(item) : null} onLongPress={() => handleComplete(item)}>
         <View style={s.taskLeft}>
@@ -356,11 +396,13 @@ export default function TasksScreen() {
                   <Text style={[s.badgeText, { color: isPast ? '#DC2626' : '#6b7280' }]}>{formatDeadline(item.deadline)}</Text>
                 </View>
               )}
-              {item.priority && (
-                <View style={[s.badge, { backgroundColor: PRIO_BG[item.priority] }]}>
-                  <Text style={[s.badgeText, { color: PRIO_COLOR[item.priority] }]}>{item.priority}</Text>
-                </View>
-              )}
+              {/* Prioriteit — tik om te wisselen (leeg → hoog → midden → laag → leeg) */}
+              <TouchableOpacity
+                disabled={!canPrio}
+                onPress={() => cyclePrio(item)}
+                style={[s.badge, dispPrio ? { backgroundColor: PRIO_BG[dispPrio] } : s.badgeEmpty]}>
+                <Text style={[s.badgeText, { color: dispPrio ? PRIO_COLOR[dispPrio] : '#9ca3af' }]}>{dispPrio || 'prio'}</Text>
+              </TouchableOpacity>
               {item.status && (
                 <View style={[s.badge, { backgroundColor: STATUS_BG[item.status] }]}>
                   <Text style={[s.badgeText, { color: STATUS_COLOR[item.status] }]}>{item.status}</Text>
@@ -406,13 +448,38 @@ export default function TasksScreen() {
         data={visibleTasks}
         keyExtractor={item => String(item.id)}
         renderItem={renderTask}
-        contentContainerStyle={[s.list, visibleTasks.length === 0 && s.listEmpty]}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={s.list}
         ListEmptyComponent={
           <View style={s.emptyState}>
-            <Ionicons name="checkmark-circle-outline" size={48} color="#d1d5db" />
-            <Text style={s.emptyText}>Geen taken in deze lijst</Text>
+            <Ionicons name="checkmark-circle-outline" size={40} color="#e5e7eb" />
+            <Text style={s.emptyText}>Nog geen taken</Text>
           </View>
         }
+        ListFooterComponent={canEdit ? (
+          addingInline ? (
+            <View style={s.inlineAddRow}>
+              <Ionicons name="add" size={18} color="#2563EB" />
+              <TextInput
+                style={s.inlineInput}
+                placeholder="Taaknaam..."
+                placeholderTextColor="#9ca3af"
+                value={newTitle}
+                onChangeText={setNewTitle}
+                autoFocus
+                returnKeyType="done"
+                blurOnSubmit={false}
+                onSubmitEditing={submitInline}
+                onBlur={() => { if (!newTitle.trim()) setAddingInline(false); }}
+              />
+            </View>
+          ) : (
+            <TouchableOpacity style={s.inlineAddBtn} onPress={() => setAddingInline(true)}>
+              <Ionicons name="add" size={18} color="#9ca3af" />
+              <Text style={s.inlineAddText}>Taak toevoegen</Text>
+            </TouchableOpacity>
+          )
+        ) : null}
       />
 
       {/* FAB */}
@@ -457,7 +524,12 @@ const s = StyleSheet.create({
   taskTitle:       { fontSize: 15, color: '#111827', fontWeight: '500', marginBottom: 4 },
   taskBadges:      { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   badge:           { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
+  badgeEmpty:      { backgroundColor: '#f3f4f6', borderWidth: 1, borderColor: '#e5e7eb', borderStyle: 'dashed' },
   badgeText:       { fontSize: 11, fontWeight: '600' },
+  inlineAddBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 6, marginTop: 2 },
+  inlineAddText:   { fontSize: 14, color: '#9ca3af', fontWeight: '600' },
+  inlineAddRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, marginTop: 2, borderWidth: 1, borderColor: '#2563EB' },
+  inlineInput:     { flex: 1, fontSize: 15, color: '#111827', paddingVertical: 6 },
   emptyState:      { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 80 },
   emptyText:       { fontSize: 15, color: '#9ca3af' },
   fab:             { position: 'absolute', bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center', shadowColor: '#2563EB', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
