@@ -35,7 +35,7 @@ const START   = 1; // positie 1 = scherm 0 (Taken)
 // ── Hoofdpager ────────────────────────────────────────────────────────────────
 function MainApp() {
   const insets                      = useSafeAreaInsets();
-  const { height: windowHeight }    = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
   const scrollRef                   = useRef(null);
   const isJumping                   = useRef(false);
   const [current, setCurrent]       = useState(0);
@@ -47,6 +47,7 @@ function MainApp() {
   const [userEmail, setUserEmail]         = useState('');
   const HEADER_H                    = 50;
   const pageH                       = windowHeight - HEADER_H - insets.top - insets.bottom;
+  const pageW                       = windowWidth; // horizontaal swipen tussen schermen
 
   // Deel-state komt uit DataContext (gecentraliseerd)
   const {
@@ -103,32 +104,32 @@ function MainApp() {
   // Scroll naar startpositie na mount
   useEffect(() => {
     const t = setTimeout(() => {
-      scrollRef.current?.scrollTo({ y: START * pageH, animated: false });
+      scrollRef.current?.scrollTo({ x: START * pageW, animated: false });
     }, 100);
     return () => clearTimeout(t);
-  }, [pageH]);
+  }, [pageW]);
 
   const handleScrollEnd = useCallback((e) => {
-    if (isJumping.current || pageH === 0) return;
-    const y   = e.nativeEvent.contentOffset.y;
-    const pos = Math.round(y / pageH);
+    if (isJumping.current || pageW === 0) return;
+    const x   = e.nativeEvent.contentOffset.x;
+    const pos = Math.round(x / pageW);
 
     if (pos === 0) {
-      // Bovenste kloon (scherm 2) → spring stil naar echte positie 3
+      // Linker kloon (scherm 2) → spring stil naar echte positie 3
       isJumping.current = true;
-      scrollRef.current?.scrollTo({ y: 3 * pageH, animated: false });
+      scrollRef.current?.scrollTo({ x: 3 * pageW, animated: false });
       setCurrent(2);
       setTimeout(() => { isJumping.current = false; }, 80);
     } else if (pos === 4) {
-      // Onderste kloon (scherm 0) → spring stil naar echte positie 1
+      // Rechter kloon (scherm 0) → spring stil naar echte positie 1
       isJumping.current = true;
-      scrollRef.current?.scrollTo({ y: 1 * pageH, animated: false });
+      scrollRef.current?.scrollTo({ x: 1 * pageW, animated: false });
       setCurrent(0);
       setTimeout(() => { isJumping.current = false; }, 80);
     } else {
       setCurrent(LOOP[pos]);
     }
-  }, [pageH]);
+  }, [pageW]);
 
   return (
     <View style={{ flex: 1, backgroundColor: '#18181b', paddingTop: insets.top, paddingBottom: insets.bottom }}>
@@ -148,11 +149,11 @@ function MainApp() {
       <View style={{ flex: 1 }}>
         <ScrollView
           ref={scrollRef}
+          horizontal
+          pagingEnabled
           style={{ flex: 1 }}
-          snapToInterval={pageH}
-          snapToAlignment="start"
           decelerationRate="fast"
-          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={handleScrollEnd}
           bounces={false}
           overScrollMode="never"
@@ -161,7 +162,7 @@ function MainApp() {
           {LOOP.map((screenIndex, i) => {
             const { Component } = SCREENS[screenIndex];
             return (
-              <View key={i} style={{ height: pageH, overflow: 'hidden' }}>
+              <View key={i} style={{ width: pageW, height: pageH, overflow: 'hidden' }}>
                 <Component />
               </View>
             );
@@ -390,13 +391,13 @@ function MainApp() {
         {/* ── Agent Management modal ── */}
         <AgentsModal visible={showAgents} onClose={() => setShowAgents(false)} />
 
-        {/* ── Positie-indicator (rechts) ── */}
-        <View style={{ position: 'absolute', right: 10, top: '50%', marginTop: -26, gap: 8, pointerEvents: 'none' }}>
+        {/* ── Positie-indicator (onder, horizontaal) ── */}
+        <View style={{ position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 8, pointerEvents: 'none' }}>
           {SCREENS.map((sc, i) => (
             <View key={i} style={{
-              width:  current === i ? 8 : 5,
-              height: current === i ? 8 : 5,
-              borderRadius: 4,
+              width:  current === i ? 18 : 6,
+              height: 6,
+              borderRadius: 3,
               backgroundColor: current === i ? sc.color : '#3f3f46',
             }} />
           ))}
