@@ -8,6 +8,7 @@ import {
   loadPersonColors, setPersonColorDB, removePersonColorDB,
 } from '../db';
 import { supabase } from '../supabase';
+import { dateKey } from '../utils';
 
 const DataContext = createContext(null);
 
@@ -161,6 +162,36 @@ export function DataProvider({ userId, children }) {
   const updateTask = async (task) => { await updateTaskDB(task); await reloadAll(); };
   const deleteTask = async (id) => { await trashTaskDB(id); await reloadAll(); };
   const completeTask = async (task) => {
+    if (task.recurrence) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const next = task.deadline ? new Date(task.deadline + 'T00:00:00') : new Date(today);
+      const step = () => {
+        if (task.recurrence === 'daily') next.setDate(next.getDate() + 1);
+        else if (task.recurrence === 'weekly') next.setDate(next.getDate() + 7);
+        else if (task.recurrence === 'biweekly') next.setDate(next.getDate() + 14);
+        else if (task.recurrence === 'monthly') next.setMonth(next.getMonth() + 1);
+        else if (typeof task.recurrence === 'string' && task.recurrence.startsWith('custom:')) {
+          const [, intervalRaw, unit] = task.recurrence.split(':');
+          const interval = Math.max(1, Number(intervalRaw) || 1);
+          if (unit === 'days') next.setDate(next.getDate() + interval);
+          else if (unit === 'weeks') next.setDate(next.getDate() + (interval * 7));
+          else if (unit === 'months') next.setMonth(next.getMonth() + interval);
+          else return false;
+        }
+        else return false;
+        return true;
+      };
+      if (!step()) return;
+      while (next <= today) step();
+      await updateTaskDB({
+        ...task,
+        status: '',
+        deadline: dateKey(next),
+        lastCompletedAt: new Date().toISOString(),
+      });
+      await reloadAll();
+      return;
+    }
     await trashTaskDB(task.id);
     setTrash(t => [...t, { ...task, completedAt: new Date().toISOString() }]);
     await reloadAll();

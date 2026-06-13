@@ -8,10 +8,27 @@ import { useData } from '../context/DataContext';
 import { formatDeadline, getTodayKey, dateKey, MONTHS, MONTHS_SHORT, DAYS_SHORT, PRIO_COLOR, PRIO_BG, STATUS_COLOR, STATUS_BG, PERSON_COLORS } from '../utils';
 
 // ── DATE PICKER ───────────────────────────────────────────────────────────────
-function DatePickerModal({ value, onSelect, onClose }) {
+function recurrenceLabel(recurrence) {
+  if (recurrence === 'daily') return 'Dagelijks';
+  if (recurrence === 'weekly') return 'Wekelijks';
+  if (recurrence === 'biweekly') return 'Elke 2 weken';
+  if (recurrence === 'monthly') return 'Maandelijks';
+  if (recurrence?.startsWith('custom:')) {
+    const [, interval, unit] = recurrence.split(':');
+    const labels = { days: 'dagen', weeks: 'weken', months: 'maanden' };
+    return `Elke ${interval} ${labels[unit] || unit}`;
+  }
+  return null;
+}
+
+function DatePickerModal({ value, recurrence, onSelect, onRecurrenceSelect, onClose }) {
   const initial = value ? new Date(value + 'T12:00:00') : new Date();
   const [viewYear, setViewYear]   = useState(initial.getFullYear());
   const [viewMonth, setViewMonth] = useState(initial.getMonth());
+  const customMatch = recurrence?.match(/^custom:(\d+):(days|weeks|months)$/);
+  const [customOpen, setCustomOpen] = useState(recurrence === 'biweekly' || Boolean(customMatch));
+  const [customInterval, setCustomInterval] = useState(customMatch ? Number(customMatch[1]) : 2);
+  const [customUnit, setCustomUnit] = useState(customMatch?.[2] || 'weeks');
 
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const firstDay    = (y, m) => { const d = new Date(y, m, 1).getDay(); return d === 0 ? 6 : d - 1; };
@@ -62,6 +79,58 @@ function DatePickerModal({ value, onSelect, onClose }) {
             })}
           </View>
 
+          <View style={dp.repeatSection}>
+            <Text style={dp.repeatLabel}>HERHALEN</Text>
+            <View style={dp.repeatGrid}>
+              {[
+                ['daily', 'Dagelijks'],
+                ['weekly', 'Wekelijks'],
+                ['monthly', 'Maandelijks'],
+              ].map(([key, label]) => (
+                <TouchableOpacity key={key}
+                  style={[dp.repeatBtn, !customOpen && recurrence === key && dp.repeatBtnActive]}
+                  onPress={() => { onRecurrenceSelect(key); onClose(); }}>
+                  <Text style={[dp.repeatBtnText, !customOpen && recurrence === key && dp.repeatBtnTextActive]}>{label}</Text>
+                </TouchableOpacity>
+              ))}
+              <TouchableOpacity style={[dp.repeatBtn, customOpen && dp.repeatBtnActive]} onPress={() => setCustomOpen(true)}>
+                <Text style={[dp.repeatBtnText, customOpen && dp.repeatBtnTextActive]}>Aangepast</Text>
+              </TouchableOpacity>
+            </View>
+
+            {customOpen && (
+              <View style={dp.customBox}>
+                <Text style={dp.customPrefix}>Elke</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={dp.intervalScroll}>
+                  <View style={dp.intervalRow}>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                      <TouchableOpacity key={n} style={[dp.intervalBtn, customInterval === n && dp.intervalBtnActive]} onPress={() => setCustomInterval(n)}>
+                        <Text style={[dp.intervalText, customInterval === n && dp.intervalTextActive]}>{n}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+                <View style={dp.unitRow}>
+                  {[['days', 'dagen'], ['weeks', 'weken'], ['months', 'maanden']].map(([key, label]) => (
+                    <TouchableOpacity key={key} style={[dp.unitBtn, customUnit === key && dp.unitBtnActive]} onPress={() => setCustomUnit(key)}>
+                      <Text style={[dp.unitText, customUnit === key && dp.unitTextActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={dp.customSaveBtn}
+                  onPress={() => { onRecurrenceSelect(`custom:${customInterval}:${customUnit}`); onClose(); }}>
+                  <Text style={dp.customSaveText}>Opslaan</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {recurrence && (
+              <TouchableOpacity onPress={() => { onRecurrenceSelect(null); onClose(); }}>
+                <Text style={dp.noRepeatText}>Geen herhaling</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
           {/* Clear */}
           <TouchableOpacity style={dp.clearBtn} onPress={() => { onSelect(null); onClose(); }}>
             <Text style={dp.clearText}>Datum wissen</Text>
@@ -88,6 +157,29 @@ const dp = StyleSheet.create({
   cellText:          { fontSize: 13, color: '#111827' },
   cellTextSelected:  { color: '#fff', fontWeight: '700' },
   cellTextToday:     { color: '#2563EB', fontWeight: '700' },
+  repeatSection:     { borderTopWidth: 1, borderTopColor: '#f3f4f6', padding: 10 },
+  repeatLabel:       { fontSize: 10, fontWeight: '700', color: '#9ca3af', letterSpacing: 0.8, marginBottom: 6 },
+  repeatGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
+  repeatBtn:         { width: '49%', backgroundColor: '#f3f4f6', borderRadius: 5, paddingVertical: 7, alignItems: 'center' },
+  repeatBtnActive:   { backgroundColor: '#DBEAFE' },
+  repeatBtnText:     { fontSize: 11, fontWeight: '700', color: '#6b7280' },
+  repeatBtnTextActive:{ color: '#2563EB' },
+  customBox:         { marginTop: 8 },
+  customPrefix:      { fontSize: 11, color: '#6b7280', marginBottom: 5 },
+  intervalScroll:    { marginBottom: 6 },
+  intervalRow:       { flexDirection: 'row', gap: 4 },
+  intervalBtn:       { width: 28, height: 28, borderRadius: 5, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
+  intervalBtnActive: { backgroundColor: '#DBEAFE' },
+  intervalText:      { fontSize: 11, color: '#6b7280', fontWeight: '600' },
+  intervalTextActive:{ color: '#2563EB' },
+  unitRow:           { flexDirection: 'row', gap: 5 },
+  unitBtn:           { flex: 1, backgroundColor: '#f3f4f6', borderRadius: 5, paddingVertical: 6, alignItems: 'center' },
+  unitBtnActive:     { backgroundColor: '#DBEAFE' },
+  unitText:          { fontSize: 11, color: '#6b7280', fontWeight: '600' },
+  unitTextActive:    { color: '#2563EB' },
+  customSaveBtn:     { alignSelf: 'flex-start', marginTop: 8, backgroundColor: '#2563EB', borderRadius: 4, paddingHorizontal: 12, paddingVertical: 6 },
+  customSaveText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
+  noRepeatText:      { marginTop: 7, fontSize: 11, color: '#9ca3af' },
   clearBtn:          { padding: 12, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
   clearText:         { fontSize: 12, color: '#9ca3af', textAlign: 'center' },
 });
@@ -96,6 +188,7 @@ const dp = StyleSheet.create({
 function TaskModal({ task, lists, onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(task?.title || '');
   const [deadline, setDeadline] = useState(task?.deadline || null);
+  const [recurrence, setRecurrence] = useState(task?.recurrence || null);
   const [priority, setPriority] = useState(task?.priority || '');
   const [note,     setNote]     = useState(task?.note || '');
   const [list,     setList]     = useState(task?.list || 'mine');
@@ -104,7 +197,7 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
 
   const save = () => {
     if (!title.trim()) { Alert.alert('Voer een titel in'); return; }
-    onSave({ ...(task || {}), title: title.trim(), deadline, priority, status, note, list });
+    onSave({ ...(task || {}), title: title.trim(), deadline, recurrence, priority, status, note, list });
   };
 
   const PRIOS   = [['', '—'], ['laag', 'Laag'], ['midden', 'Midden'], ['hoog', 'Hoog']];
@@ -140,13 +233,16 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
               </View>
             </ScrollView>
 
-            {/* Deadline */}
-            <Text style={tm.label}>Deadline</Text>
+            {/* Date */}
+            <Text style={tm.label}>Datum</Text>
             <TouchableOpacity style={tm.dateBtn} onPress={() => setDatePickerOpen(true)}>
               <Ionicons name="calendar-outline" size={16} color="#6b7280" />
-              <Text style={[tm.dateBtnText, !deadline && { color: '#9ca3af' }]}>
-                {deadline ? formatDeadline(deadline) + ' (' + deadline + ')' : 'Geen datum'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[tm.dateBtnText, !deadline && { color: '#9ca3af' }]}>
+                  {deadline ? formatDeadline(deadline) + ' (' + deadline + ')' : 'Geen datum'}
+                </Text>
+                {recurrence && <Text style={tm.recurrenceText}>{recurrenceLabel(recurrence)}</Text>}
+              </View>
             </TouchableOpacity>
 
             {/* Priority */}
@@ -186,7 +282,13 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
       </KeyboardAvoidingView>
 
       {datePickerOpen && (
-        <DatePickerModal value={deadline} onSelect={setDeadline} onClose={() => setDatePickerOpen(false)} />
+        <DatePickerModal
+          value={deadline}
+          recurrence={recurrence}
+          onSelect={setDeadline}
+          onRecurrenceSelect={setRecurrence}
+          onClose={() => setDatePickerOpen(false)}
+        />
       )}
     </Modal>
   );
@@ -204,6 +306,7 @@ const tm = StyleSheet.create({
   chipText:   { fontSize: 13, color: '#374151' },
   dateBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, marginBottom: 14 },
   dateBtnText:{ fontSize: 14, color: '#374151' },
+  recurrenceText:{ fontSize: 11, color: '#2563EB', fontWeight: '600', marginTop: 2 },
   noteInput:  { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, fontSize: 14, color: '#111827', marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
   saveBtn:    { backgroundColor: '#2563EB', borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginBottom: 10 },
   saveBtnText:{ color: '#fff', fontSize: 15, fontWeight: '700' },
