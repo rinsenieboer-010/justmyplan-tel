@@ -225,7 +225,6 @@ export default function AIScreen() {
         'AGENDA:\n' + (eventList || 'Geen afspraken') + '\n\n' +
         'Regels: spreek altijd Nederlands, geef korte concrete antwoorden, gebruik task_id exact zoals hij in de lijst staat. Gebruik update_memory zodra de gebruiker een voorkeur uitlegt.';
 
-      const apiKey = process.env.EXPO_PUBLIC_CLAUDE_API_KEY;
       let apiMessages = buildApiMessages(newMessages, imageToSend);
 
       // Tool use loop (max 10 iteraties)
@@ -234,13 +233,10 @@ export default function AIScreen() {
       let continueLoop = true;
       while (continueLoop && iterations < 10) {
         iterations++;
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
+        const response = await fetch('https://justmyplan.com/api/claude', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-api-key': apiKey,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
           },
           body: JSON.stringify({
             model: 'claude-sonnet-4-6',
