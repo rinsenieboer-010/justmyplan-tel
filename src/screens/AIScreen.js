@@ -243,7 +243,7 @@ export default function AIScreen() {
             max_tokens: 8192,
             system: systemPrompt,
             tools: TOOLS,
-            tool_choice: iterations === 1 ? { type: 'any' } : { type: 'auto' },
+            tool_choice: { type: 'auto' },
             messages: apiMessages,
           }),
         });
