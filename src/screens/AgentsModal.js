@@ -45,10 +45,6 @@ export default function AgentsModal({ visible, onClose }) {
     });
   }, [visible, reload]);
 
-  const openNew = () => {
-    setEditing(null); setName(''); setEmoji('🤖'); setModel('sonnet'); setRole(''); setPrompt('');
-    setView('edit');
-  };
   const openEdit = (a) => {
     setEditing(a); setName(a.name || ''); setEmoji(a.emoji || '🤖');
     setModel(a.model || 'sonnet'); setRole(a.role || ''); setPrompt(a.system_prompt || '');
@@ -118,7 +114,7 @@ export default function AgentsModal({ visible, onClose }) {
               {agents.length === 0 && (
                 <View style={s.empty}>
                   <Text style={{ fontSize: 36 }}>🤖</Text>
-                  <Text style={s.emptyText}>Nog geen agents. Maak je eerste agent aan.</Text>
+                  <Text style={s.emptyText}>Nog geen agents. Voeg ze toe via je API-key — geef je JMP-key aan een AI (ChatGPT, Gemini) en laat die de agents aanmaken. De key vind je in de instellingen op justmyplan.com.</Text>
                 </View>
               )}
               {agents.map(a => (
@@ -138,10 +134,6 @@ export default function AgentsModal({ visible, onClose }) {
                   </TouchableOpacity>
                 </View>
               ))}
-              <TouchableOpacity style={s.newBtn} onPress={openNew}>
-                <Ionicons name="add" size={20} color="#fff" />
-                <Text style={s.newBtnText}>Nieuwe agent</Text>
-              </TouchableOpacity>
             </ScrollView>
           )
         )}
