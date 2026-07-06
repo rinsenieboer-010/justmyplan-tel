@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
-import { loadAgents, addAgentDB, updateAgentDB, deleteAgentDB } from '../db';
+import { loadAgents, addAgentDB, updateAgentDB, deleteAgentDB, createAgentRequest, getAgentRequest } from '../db';
 import { MODEL_BADGE_COLOR, MODEL_OPTIONS, AGENT_EMOJI_CHOICES, AGENT_RUN_URL } from '../agents';
 
 export default function AgentsModal({ visible, onClose }) {
@@ -19,6 +19,8 @@ export default function AgentsModal({ visible, onClose }) {
   const [input, setInput]       = useState('');
   const [running, setRunning]   = useState(false);
   const [reply, setReply]       = useState(null);
+  const [mode, setMode]         = useState('cloud'); // 'cloud' | 'terminal'
+  const [status, setStatus]     = useState('');      // voortgangstekst bij terminal
 
   // edit/create
   const [editing, setEditing] = useState(null); // null = new
@@ -67,22 +69,50 @@ export default function AgentsModal({ visible, onClose }) {
   };
 
   const openChat = (a) => { setSelected(a); setReply(null); setInput(''); setView('chat'); };
+
+  // Cloud: draait een kopie van de agent server-side op Vercel (werkt altijd).
+  const triggerCloud = async (message) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(AGENT_RUN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ agent_id: selected.id, message }),
+    });
+    const data = await res.json();
+    setReply(data.reply || data.error || 'Geen response');
+  };
+
+  // Terminal: zet het bericht in de wachtrij; de bridge op de laptop voert de
+  // ECHTE agent uit en schrijft het antwoord terug. Werkt alleen als de laptop
+  // aanstaat en de bridge draait.
+  const triggerTerminal = async (message) => {
+    const agentKey = (selected.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    setStatus('Verstuurd naar je laptop...');
+    const req = await createAgentRequest(uid, agentKey, selected.name, message);
+    const started = Date.now();
+    // Poll max ~2 min op een antwoord.
+    while (Date.now() - started < 120000) {
+      await new Promise(r => setTimeout(r, 2000));
+      const cur = await getAgentRequest(req.id);
+      if (!cur) continue;
+      if (cur.status === 'running') setStatus(`${selected.name} is bezig op je laptop...`);
+      if (cur.status === 'done')  { setReply(cur.reply || '(leeg antwoord)'); return; }
+      if (cur.status === 'error') { setReply(cur.reply || 'Er ging iets mis op de laptop.'); return; }
+    }
+    setReply('Geen antwoord van je laptop. Staat hij aan en draait de bridge (npm start in justmyplan-bridge)?');
+  };
+
   const trigger = async () => {
     if (!selected || !input.trim()) return;
-    setRunning(true); setReply(null);
+    const message = input.trim();
+    setRunning(true); setReply(null); setStatus('');
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(AGENT_RUN_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-        body: JSON.stringify({ agent_id: selected.id, message: input.trim() }),
-      });
-      const data = await res.json();
-      setReply(data.reply || data.error || 'Geen response');
+      if (mode === 'terminal') await triggerTerminal(message);
+      else await triggerCloud(message);
     } catch (err) {
       setReply('Fout: ' + err.message);
     }
-    setRunning(false);
+    setRunning(false); setStatus('');
   };
 
   const close = () => { setView('list'); setSelected(null); onClose(); };
@@ -198,10 +228,29 @@ export default function AgentsModal({ visible, onClose }) {
                 </View>
               </View>
 
+              {/* Cloud vs Terminal */}
+              <View style={s.modeRow}>
+                <TouchableOpacity onPress={() => setMode('cloud')} disabled={running}
+                  style={[s.modeBtn, mode === 'cloud' && s.modeBtnOn]}>
+                  <Ionicons name="cloud-outline" size={14} color={mode === 'cloud' ? '#fff' : '#9ca3af'} />
+                  <Text style={[s.modeText, mode === 'cloud' && s.modeTextOn]}>Cloud</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setMode('terminal')} disabled={running}
+                  style={[s.modeBtn, mode === 'terminal' && s.modeBtnOn]}>
+                  <Ionicons name="terminal-outline" size={14} color={mode === 'terminal' ? '#fff' : '#9ca3af'} />
+                  <Text style={[s.modeText, mode === 'terminal' && s.modeTextOn]}>Terminal</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={s.modeHint}>
+                {mode === 'terminal'
+                  ? 'De échte agent op je laptop (laptop moet aanstaan + bridge draaien).'
+                  : 'Een kopie van de agent in de cloud — werkt altijd.'}
+              </Text>
+
               {running && (
                 <View style={s.runningRow}>
                   <ActivityIndicator color="#2563EB" size="small" />
-                  <Text style={s.runningText}>{selected.name} denkt na...</Text>
+                  <Text style={s.runningText}>{status || `${selected.name} denkt na...`}</Text>
                 </View>
               )}
               {reply && (
@@ -259,6 +308,12 @@ const s = StyleSheet.create({
   agentHead:      { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 },
   agentHeadName:  { color: '#f9fafb', fontSize: 18, fontWeight: '700' },
   agentHeadRole:  { color: '#9ca3af', fontSize: 13, marginTop: 2 },
+  modeRow:        { flexDirection: 'row', gap: 8, marginBottom: 6 },
+  modeBtn:        { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: '#3f3f46', borderRadius: 8, paddingVertical: 8 },
+  modeBtnOn:      { backgroundColor: '#2563EB', borderColor: '#2563EB' },
+  modeText:       { color: '#9ca3af', fontSize: 13, fontWeight: '600' },
+  modeTextOn:     { color: '#fff' },
+  modeHint:       { color: '#6b7280', fontSize: 11, marginBottom: 16, lineHeight: 15 },
   runningRow:     { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 },
   runningText:    { color: '#9ca3af', fontSize: 13 },
   replyBox:       { backgroundColor: '#0f1f14', borderWidth: 1, borderColor: '#166534', borderRadius: 8, padding: 14 },

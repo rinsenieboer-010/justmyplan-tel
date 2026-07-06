@@ -231,3 +231,26 @@ export async function updateAgentDB(a) {
 export async function deleteAgentDB(id) {
   await supabase.from('agents').delete().eq('id', id);
 }
+
+// ── TERMINAL-BRIDGE (praat met de echte agents op je laptop) ────────────────────
+
+// Zet een verzoek in de wachtrij. De bridge op de laptop pikt 'pending' op.
+export async function createAgentRequest(userId, agentKey, agentName, message) {
+  const { data, error } = await supabase
+    .from('agent_requests')
+    .insert({ user_id: userId, agent_key: agentKey, agent_name: agentName, message, status: 'pending' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Haal de huidige status/antwoord van een verzoek op (voor polling).
+export async function getAgentRequest(id) {
+  const { data } = await supabase
+    .from('agent_requests')
+    .select('status,reply')
+    .eq('id', id)
+    .single();
+  return data;
+}
