@@ -249,6 +249,7 @@ export default function AIScreen() {
         });
 
         const data = await response.json();
+        if (data.error) throw new Error(typeof data.error === 'string' ? data.error : (data.error.message || 'API-fout'));
 
         if (data.stop_reason === 'tool_use') {
           const toolUseBlocks = data.content.filter(b => b.type === 'tool_use');
@@ -285,8 +286,16 @@ export default function AIScreen() {
           continueLoop = false;
         }
       }
-    } catch {
-      setMessages(m => [...m, { role: 'assistant', content: 'Er is een verbindingsfout opgetreden.' }]);
+      // Loop-limiet bereikt zonder eindantwoord: meld wat er wel gedaan is.
+      if (continueLoop) {
+        setMessages(m => [...m, { role: 'assistant', content:
+          actionsExecuted > 0
+            ? `Gedaan. ${actionsExecuted} item${actionsExecuted > 1 ? 's' : ''} bijgewerkt.`
+            : 'Dit werd te complex. Probeer het in kleinere stappen.' }]);
+      }
+    } catch (err) {
+      const detail = err?.message && err.message !== 'Network request failed' ? ` (${err.message})` : '';
+      setMessages(m => [...m, { role: 'assistant', content: `Er ging iets mis${detail}. Probeer het opnieuw.` }]);
     }
     setLoading(false);
     setLoadingStatus('');

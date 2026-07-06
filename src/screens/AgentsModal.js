@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
-import { loadAgents, addAgentDB, updateAgentDB, deleteAgentDB, createAgentRequest, getAgentRequest } from '../db';
+import { loadAgents, updateAgentDB, deleteAgentDB, createAgentRequest, getAgentRequest } from '../db';
 import { MODEL_BADGE_COLOR, MODEL_OPTIONS, AGENT_EMOJI_CHOICES, AGENT_RUN_URL } from '../agents';
 
 export default function AgentsModal({ visible, onClose }) {
@@ -53,10 +53,9 @@ export default function AgentsModal({ visible, onClose }) {
     setView('edit');
   };
   const saveAgent = async () => {
+    if (!editing?.id) return; // aanmaken kan alleen nog via de API-key
     if (!name.trim()) { Alert.alert('Geef de agent een naam'); return; }
-    const payload = { name: name.trim(), emoji, model, role: role.trim(), system_prompt: prompt.trim() };
-    if (editing?.id) await updateAgentDB({ ...payload, id: editing.id });
-    else await addAgentDB(uid, payload);
+    await updateAgentDB({ name: name.trim(), emoji, model, role: role.trim(), system_prompt: prompt.trim(), id: editing.id });
     await reload(uid);
     setView('list');
   };
@@ -117,7 +116,7 @@ export default function AgentsModal({ visible, onClose }) {
 
   const close = () => { setView('list'); setSelected(null); onClose(); };
   const headerTitle = view === 'chat' ? (selected?.name || 'Agent')
-    : view === 'edit' ? (editing ? 'Agent bewerken' : 'Nieuwe agent')
+    : view === 'edit' ? 'Agent bewerken'
     : '⚡ Agent Management';
 
   return (
@@ -202,7 +201,7 @@ export default function AgentsModal({ visible, onClose }) {
                 placeholder="Je bent ... Antwoord kort en in het Nederlands." placeholderTextColor="#6b7280" />
 
               <TouchableOpacity style={s.saveBtn} onPress={saveAgent}>
-                <Text style={s.saveBtnText}>{editing ? 'Opslaan' : 'Aanmaken'}</Text>
+                <Text style={s.saveBtnText}>Opslaan</Text>
               </TouchableOpacity>
               {editing && (
                 <TouchableOpacity style={s.deleteBtn} onPress={removeAgent}>
@@ -290,8 +289,6 @@ const s = StyleSheet.create({
   editBtn:        { paddingHorizontal: 16, paddingVertical: 16 },
   modelBadge:     { borderRadius: 4, paddingHorizontal: 7, paddingVertical: 3 },
   modelBadgeText: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  newBtn:         { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: '#2563EB', borderRadius: 10, paddingVertical: 13, marginHorizontal: 16, marginTop: 18 },
-  newBtnText:     { color: '#fff', fontSize: 14, fontWeight: '700' },
   label:          { color: '#9ca3af', fontSize: 11, fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 8, marginTop: 14 },
   field:          { backgroundColor: '#27272a', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: '#f9fafb' },
   fieldMulti:     { minHeight: 100, textAlignVertical: 'top' },
