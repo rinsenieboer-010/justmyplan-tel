@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   Alert, KeyboardAvoidingView, Platform, ScrollView,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { supabase } from '../supabase';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -15,8 +16,39 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading]   = useState(false);
   const [success, setSuccess]   = useState(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then(setAppleAvailable).catch(() => {});
+    }
+  }, []);
 
   const switchMode = (m) => { setMode(m); setSuccess(null); };
+
+  // Native Sign in with Apple: identity token direct naar Supabase (geen browser).
+  const handleApple = async () => {
+    setLoading(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (credential.identityToken) {
+        const { error } = await supabase.auth.signInWithIdToken({
+          provider: 'apple',
+          token: credential.identityToken,
+        });
+        if (error) Alert.alert('Fout', error.message);
+      }
+    } catch (e) {
+      if (e.code !== 'ERR_REQUEST_CANCELED') Alert.alert('Fout', e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleEmail = async () => {
     if (mode === 'forgot') {
@@ -97,6 +129,15 @@ export default function LoginScreen() {
           </Text>
 
           {mode !== 'forgot' && <>
+            {appleAvailable && (
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                cornerRadius={8}
+                style={s.appleBtn}
+                onPress={handleApple}
+              />
+            )}
             <TouchableOpacity style={s.oauthBtn} onPress={() => handleOAuth('google')} disabled={loading}>
               <Text style={s.oauthIcon}>G</Text>
               <Text style={s.oauthText}>Doorgaan met Google</Text>
@@ -181,6 +222,7 @@ const s = StyleSheet.create({
   dot:          { width: 8, height: 8, borderRadius: 4 },
   card:         { backgroundColor: '#18181b', borderRadius: 16, padding: 28, width: '100%', maxWidth: 400 },
   cardTitle:    { color: '#f9fafb', fontSize: 20, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
+  appleBtn:     { height: 44, marginBottom: 10 },
   oauthBtn:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#27272a', borderRadius: 8, borderWidth: 1, borderColor: '#3f3f46', paddingVertical: 12, marginBottom: 10, gap: 8 },
   oauthIcon:    { color: '#f9fafb', fontSize: 15, fontWeight: '700', width: 20, textAlign: 'center' },
   oauthText:    { color: '#f9fafb', fontSize: 14, fontWeight: '500' },
