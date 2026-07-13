@@ -45,6 +45,7 @@ function taskToDB(t) {
     list_id:  t.list || 'mine',
     note:     t.note || null,
     recurrence: t.recurrence || null,
+    reminder_time: t.reminderTime || null,
     last_completed_at: t.lastCompletedAt || null,
   };
 }
@@ -59,6 +60,7 @@ function dbToTask(r) {
     list:     r.list_id || 'mine',
     note:     r.note || '',
     recurrence: r.recurrence || null,
+    reminderTime: r.reminder_time || null,
     lastCompletedAt: r.last_completed_at || null,
   };
 }

@@ -234,8 +234,19 @@ export default function CalendarScreen() {
     ? `${MONTHS[weekDates[0].getMonth()]} ${weekDates[6].getFullYear()}`
     : `${MONTHS_SHORT[weekDates[0].getMonth()]} – ${MONTHS_SHORT[weekDates[6].getMonth()]} ${weekDates[6].getFullYear()}`;
 
-  // Taken met deadline deze week (per dag), om eventueel een strip te tonen
-  const hasAnyDeadlineTask = weekDates.some(d => tasks.some(t => t.deadline === dateKey(d)));
+  // Taken met deadline deze week (per dag), om eventueel een strip te tonen.
+  // Taken mét een herinneringstijd staan niet in de strip maar in het raster.
+  const hasAnyDeadlineTask = weekDates.some(d => tasks.some(t => t.deadline === dateKey(d) && !t.reminderTime));
+
+  // Positie in het raster voor een taak met herinneringstijd (geclamped op het
+  // zichtbare bereik zodat vroege/late tijden niet buiten beeld vallen)
+  const taskGridTop = (reminderTime) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(reminderTime || '');
+    if (!m) return null;
+    const mins = Number(m[1]) * 60 + Number(m[2]);
+    const clamped = Math.min(Math.max(mins, HOUR_FROM * 60), HOUR_TO * 60 - 30);
+    return (clamped - HOUR_FROM * 60) / 60 * SLOT_H;
+  };
 
   return (
     <View style={s.container}>
@@ -273,7 +284,7 @@ export default function CalendarScreen() {
             <Text style={s.taskRowLabel}>taken</Text>
           </View>
           {weekDates.map((d, i) => {
-            const dayTasks = tasks.filter(t => t.deadline === dateKey(d));
+            const dayTasks = tasks.filter(t => t.deadline === dateKey(d) && !t.reminderTime);
             return (
               <View key={i} style={s.taskCol}>
                 {dayTasks.map(task => (
@@ -350,6 +361,18 @@ export default function CalendarScreen() {
                       <Text style={[s.sharedName, { color: ps.text }]} numberOfLines={1}>{shortName(ev.ownerEmail)}</Text>
                       <Text style={[s.eventBlockTitle, { color: ps.text }]} numberOfLines={height > 34 ? 2 : 1}>{ev.title}</Text>
                     </TouchableOpacity>
+                  );
+                })}
+
+                {/* Taken met herinneringstijd: chip op het tijdstip in het raster */}
+                {tasks.filter(t => t.deadline === key && t.reminderTime).map(task => {
+                  const top = taskGridTop(task.reminderTime);
+                  if (top === null) return null;
+                  return (
+                    <View key={'tk-' + task.id} pointerEvents="none"
+                      style={[s.timedTaskChip, { top, backgroundColor: PRIO_BG[task.priority] || '#f3f4f6', borderLeftColor: PRIO_COLOR[task.priority] || '#9ca3af' }]}>
+                      <Text style={[s.timedTaskText, { color: PRIO_COLOR[task.priority] || '#6b7280' }]} numberOfLines={1}>✓ {task.title}</Text>
+                    </View>
                   );
                 })}
 
@@ -436,4 +459,7 @@ const s = StyleSheet.create({
   // de onderkant eronder uitsteekt (Google-Agenda-stijl).
   sharedBlock:    { position: 'absolute', left: 7, right: 5, borderRadius: 4, borderWidth: 1, borderStyle: 'dashed', paddingHorizontal: 3, paddingVertical: 1, overflow: 'hidden', zIndex: 1 },
   sharedName:     { fontSize: 7, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.3 },
+  // Taak op tijdstip: klein chipje in het raster, boven de afspraken
+  timedTaskChip:  { position: 'absolute', left: 1, right: 1, borderLeftWidth: 2, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1, zIndex: 3 },
+  timedTaskText:  { fontSize: 9, fontWeight: '600' },
 });

@@ -184,10 +184,47 @@ const dp = StyleSheet.create({
   clearText:         { fontSize: 12, color: '#9ca3af', textAlign: 'center' },
 });
 
+// ── REMINDER TIME PICKER (uur/minuut, minuten in stappen van 5) ───────────────
+function ReminderTimeRow({ value, onChange }) {
+  const parsed = /^(\d{1,2}):(\d{2})$/.exec(value || '');
+  const h = parsed ? Number(parsed[1]) : null;
+  const m = parsed ? Number(parsed[2]) : null;
+  const set = (nh, nm) => onChange(String(nh).padStart(2, '0') + ':' + String(nm).padStart(2, '0'));
+
+  if (h === null) {
+    return (
+      <TouchableOpacity style={tm.dateBtn} onPress={() => set(9, 0)}>
+        <Ionicons name="alarm-outline" size={16} color="#6b7280" />
+        <Text style={[tm.dateBtnText, { color: '#9ca3af' }]}>Geen herinnering</Text>
+      </TouchableOpacity>
+    );
+  }
+  return (
+    <View style={[tm.dateBtn, { justifyContent: 'space-between' }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Ionicons name="alarm-outline" size={16} color="#2563EB" />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <TouchableOpacity style={tm.timeBtn} onPress={() => set((h + 23) % 24, m)}><Text style={tm.timeBtnText}>−</Text></TouchableOpacity>
+          <Text style={tm.timeValue}>{String(h).padStart(2, '0')}</Text>
+          <TouchableOpacity style={tm.timeBtn} onPress={() => set((h + 1) % 24, m)}><Text style={tm.timeBtnText}>+</Text></TouchableOpacity>
+          <Text style={tm.timeValue}>:</Text>
+          <TouchableOpacity style={tm.timeBtn} onPress={() => set(h, (m + 55) % 60)}><Text style={tm.timeBtnText}>−</Text></TouchableOpacity>
+          <Text style={tm.timeValue}>{String(m).padStart(2, '0')}</Text>
+          <TouchableOpacity style={tm.timeBtn} onPress={() => set(h, (m + 5) % 60)}><Text style={tm.timeBtnText}>+</Text></TouchableOpacity>
+        </View>
+      </View>
+      <TouchableOpacity onPress={() => onChange(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+        <Ionicons name="close-circle" size={18} color="#9ca3af" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 // ── TASK MODAL ────────────────────────────────────────────────────────────────
 function TaskModal({ task, lists, onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(task?.title || '');
   const [deadline, setDeadline] = useState(task?.deadline || null);
+  const [reminderTime, setReminderTime] = useState(task?.reminderTime || null);
   const [recurrence, setRecurrence] = useState(task?.recurrence || null);
   const [priority, setPriority] = useState(task?.priority || '');
   const [note,     setNote]     = useState(task?.note || '');
@@ -197,7 +234,7 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
 
   const save = () => {
     if (!title.trim()) { Alert.alert('Voer een titel in'); return; }
-    onSave({ ...(task || {}), title: title.trim(), deadline, recurrence, priority, status, note, list });
+    onSave({ ...(task || {}), title: title.trim(), deadline, reminderTime, recurrence, priority, status, note, list });
   };
 
   const PRIOS   = [['', '—'], ['laag', 'Laag'], ['midden', 'Midden'], ['hoog', 'Hoog']];
@@ -244,6 +281,10 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
                 {recurrence && <Text style={tm.recurrenceText}>{recurrenceLabel(recurrence)}</Text>}
               </View>
             </TouchableOpacity>
+
+            {/* Reminder time — melding op dit tijdstip, taak verschijnt ook in agenda */}
+            <Text style={tm.label}>Herinnering</Text>
+            <ReminderTimeRow value={reminderTime} onChange={setReminderTime} />
 
             {/* Priority */}
             <Text style={tm.label}>Prioriteit</Text>
@@ -307,6 +348,9 @@ const tm = StyleSheet.create({
   dateBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, marginBottom: 14 },
   dateBtnText:{ fontSize: 14, color: '#374151' },
   recurrenceText:{ fontSize: 11, color: '#2563EB', fontWeight: '600', marginTop: 2 },
+  timeBtn:    { width: 26, height: 26, borderRadius: 5, backgroundColor: '#f3f4f6', justifyContent: 'center', alignItems: 'center' },
+  timeBtnText:{ fontSize: 15, color: '#374151', fontWeight: '700' },
+  timeValue:  { fontSize: 15, fontWeight: '700', color: '#111827', minWidth: 24, textAlign: 'center' },
   noteInput:  { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, fontSize: 14, color: '#111827', marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
   saveBtn:    { backgroundColor: '#2563EB', borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginBottom: 10 },
   saveBtnText:{ color: '#fff', fontSize: 15, fontWeight: '700' },
@@ -492,6 +536,12 @@ export default function TasksScreen() {
               {item.deadline && (
                 <View style={[s.badge, { backgroundColor: isPast ? '#FEE2E2' : '#f3f4f6' }]}>
                   <Text style={[s.badgeText, { color: isPast ? '#DC2626' : '#6b7280' }]}>{formatDeadline(item.deadline)}</Text>
+                </View>
+              )}
+              {item.reminderTime && (
+                <View style={[s.badge, { backgroundColor: '#DBEAFE', flexDirection: 'row', alignItems: 'center', gap: 3 }]}>
+                  <Ionicons name="alarm-outline" size={10} color="#1d4ed8" />
+                  <Text style={[s.badgeText, { color: '#1d4ed8' }]}>{item.reminderTime}</Text>
                 </View>
               )}
               {/* Prioriteit — tik om te wisselen. Leeg = onzichtbaar maar nog

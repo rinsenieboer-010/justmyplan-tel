@@ -35,12 +35,14 @@ const TOOLS = [
   },
   {
     name: 'create_task',
-    description: 'Maak een nieuwe taak aan voor de gebruiker.',
+    description: 'Maak een nieuwe taak aan voor de gebruiker. Een taak met reminder_time verschijnt ook in de agenda op dat tijdstip en geeft een pushmelding. Gebruik recurrence voor terugkerende taken (bijv. dagelijks medicijnen nemen).',
     input_schema: {
       type: 'object',
       properties: {
         title:    { type: 'string', description: 'Titel van de taak' },
-        deadline: { type: 'string', description: 'Deadline in YYYY-MM-DD formaat (optioneel)' },
+        deadline: { type: 'string', description: 'Deadline in YYYY-MM-DD formaat (optioneel; verplicht als reminder_time of recurrence gezet wordt — gebruik dan de eerstvolgende datum)' },
+        reminder_time: { type: 'string', description: 'Tijdstip van de melding in HH:MM (optioneel), bijv. "08:00"' },
+        recurrence: { type: 'string', enum: ['daily', 'weekly', 'biweekly', 'monthly'], description: 'Herhaling (optioneel)' },
         priority: { type: 'string', enum: ['', 'hoog', 'midden', 'laag'] },
       },
       required: ['title'],
@@ -55,6 +57,8 @@ const TOOLS = [
         task_id:  { type: 'string', description: 'ID van de taak' },
         status:   { type: 'string', enum: ['', 'open', 'bezig', 'klaar'] },
         deadline: { type: 'string', description: 'Nieuwe deadline in YYYY-MM-DD' },
+        reminder_time: { type: 'string', description: 'Tijdstip van de melding in HH:MM, of lege string om te verwijderen' },
+        recurrence: { type: 'string', enum: ['', 'daily', 'weekly', 'biweekly', 'monthly'], description: 'Herhaling; lege string verwijdert de herhaling' },
         priority: { type: 'string', enum: ['', 'hoog', 'midden', 'laag'] },
       },
       required: ['task_id'],
@@ -151,6 +155,8 @@ export default function AIScreen() {
       await addTask({
         title: input.title,
         deadline: input.deadline || null,
+        reminderTime: input.reminder_time || null,
+        recurrence: input.recurrence || null,
         priority: input.priority || '',
         status: '',
         note: '',
@@ -174,6 +180,8 @@ export default function AIScreen() {
           ...task,
           ...(input.status   !== undefined && { status: input.status }),
           ...(input.deadline !== undefined && { deadline: input.deadline }),
+          ...(input.reminder_time !== undefined && { reminderTime: input.reminder_time || null }),
+          ...(input.recurrence !== undefined && { recurrence: input.recurrence || null }),
           ...(input.priority !== undefined && { priority: input.priority }),
         });
       }
@@ -206,7 +214,7 @@ export default function AIScreen() {
 
     try {
       const taskList = tasks.map(t =>
-        '- task_id="' + t.id + '" | ' + t.title + ' | ' + (t.priority || 'geen prioriteit') + ' | ' + (t.status || 'geen status') + (t.deadline ? ' | deadline: ' + t.deadline : '')
+        '- task_id="' + t.id + '" | ' + t.title + ' | ' + (t.priority || 'geen prioriteit') + ' | ' + (t.status || 'geen status') + (t.deadline ? ' | deadline: ' + t.deadline : '') + (t.reminderTime ? ' | herinnering: ' + t.reminderTime : '') + (t.recurrence ? ' | herhaling: ' + t.recurrence : '')
       ).join('\n');
       const eventList = events.map(e =>
         '- ' + e.title + ' op ' + e.date + ' van ' + pad(e.startH) + ':' + pad(e.startM) + ' tot ' + pad(e.endH) + ':' + pad(e.endM)
@@ -217,6 +225,7 @@ export default function AIScreen() {
         'GEDRAGSREGEL:\n' +
         '- Gebruiker vraagt een actie (taak/afspraak aanmaken of wijzigen)? gebruik de actie-tool direct\n' +
         '- Meerdere taken wijzigen op basis van een woord? gebruik filter_and_update_tasks met het zoekwoord\n' +
+        '- Taak op een vast tijdstip (bijv. medicijnen/supplementen nemen)? gebruik create_task met reminder_time en, bij terugkerende taken, recurrence. De taak komt dan afvinkbaar in de takenlijst, verschijnt in de agenda op dat tijdstip en geeft een pushmelding. Maak hiervoor GEEN aparte agenda-afspraak.\n' +
         '- Eén taak wijzigen? gebruik update_task\n' +
         '- Gebruiker stelt een vraag of voert gesprek? antwoord gewoon als tekst, geen tool nodig\n' +
         'VERBOD: Zeg NOOIT dat je iets hebt gedaan zonder de bijbehorende tool aan te roepen.\n\n' +

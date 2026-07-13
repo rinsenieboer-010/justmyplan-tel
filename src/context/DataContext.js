@@ -9,6 +9,7 @@ import {
 } from '../db';
 import { supabase } from '../supabase';
 import { dateKey } from '../utils';
+import { ensureNotificationPermissions, syncNotifications } from '../notifications';
 
 const DataContext = createContext(null);
 
@@ -137,6 +138,14 @@ export function DataProvider({ userId, children }) {
   }, [userId]);
 
   useEffect(() => { reloadAll(); }, [reloadAll]);
+
+  // Meldingen: toestemming vragen bij start, en bij elke datawijziging het
+  // schema opnieuw plannen (kort gedebounced zodat een reload niet dubbel plant)
+  useEffect(() => { ensureNotificationPermissions(); }, []);
+  useEffect(() => {
+    const t = setTimeout(() => syncNotifications(tasks, events), 1500);
+    return () => clearTimeout(t);
+  }, [tasks, events]);
 
   // Realtime: eigen data + gedeelde wijzigingen
   useEffect(() => {
