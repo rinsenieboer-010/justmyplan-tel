@@ -3,7 +3,7 @@
     "name": "justmyplan",
     "slug": "justmyplan",
     "scheme": "justmyplan",
-    "version": "7.1",
+    "version": "7.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -39,6 +39,12 @@
       "expo-apple-authentication",
       "expo-notifications",
       "expo-web-browser",
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "justmyplan gebruikt je agenda om bestaande afspraken over te zetten."
+        }
+      ],
       "expo-secure-store",
       [
         "expo-image-picker",
