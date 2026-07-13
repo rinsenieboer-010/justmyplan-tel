@@ -113,7 +113,7 @@ export default function ImportCalendarModal({ visible, onClose }) {
         activeOpacity={1} onPress={phase === 'busy' ? undefined : onClose}>
         <TouchableOpacity activeOpacity={1} style={{ backgroundColor:'#18181b', borderRadius:16, width:320, maxHeight:'80%', padding:24 }}>
           <View style={{ flexDirection:'row', alignItems:'center', marginBottom:16 }}>
-            <Text style={{ flex:1, color:'#f9fafb', fontSize:15, fontWeight:'700' }}>📥  Apple Agenda importeren</Text>
+            <Text style={{ flex:1, color:'#f9fafb', fontSize:15, fontWeight:'700' }}>📥  Agenda importeren</Text>
             {phase !== 'busy' && (
               <TouchableOpacity onPress={onClose}>
                 <Ionicons name="close" size={22} color="#9ca3af" />
@@ -131,6 +131,9 @@ export default function ImportCalendarModal({ visible, onClose }) {
             <>
               <Text style={{ color:'#6b7280', fontSize:12, lineHeight:18, marginBottom:14 }}>
                 Kies welke kalenders je wilt overzetten. Alles van {MONTHS_BACK} maand terug tot {MONTHS_AHEAD} maanden vooruit komt in justmyplan (herhalende afspraken worden uitgevouwen). Al bestaande afspraken worden overgeslagen.
+              </Text>
+              <Text style={{ color:'#3f3f46', fontSize:11, lineHeight:16, marginBottom:10 }}>
+                Google Agenda? Voeg je Google-account toe via Instellingen → Apps → Agenda → Accounts; de kalenders verschijnen dan hieronder.
               </Text>
               <ScrollView style={{ maxHeight:260 }} showsVerticalScrollIndicator={false}>
                 {calendars.map(c => (

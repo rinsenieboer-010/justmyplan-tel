@@ -227,8 +227,8 @@ function MainApp() {
                 style={{ flexDirection:'row', alignItems:'center', gap:10, backgroundColor:'#111827', borderRadius:8, padding:12, marginBottom:20 }}>
                 <Text style={{ fontSize:18 }}>📥</Text>
                 <View style={{ flex:1 }}>
-                  <Text style={{ color:'#f9fafb', fontSize:13, fontWeight:'600' }}>Apple Agenda importeren</Text>
-                  <Text style={{ color:'#6b7280', fontSize:11, marginTop:1 }}>Zet je bestaande afspraken in één keer over</Text>
+                  <Text style={{ color:'#f9fafb', fontSize:13, fontWeight:'600' }}>Agenda importeren</Text>
+                  <Text style={{ color:'#6b7280', fontSize:11, marginTop:1 }}>Apple of Google Agenda in één keer overzetten</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={18} color="#6b7280" />
               </TouchableOpacity>
