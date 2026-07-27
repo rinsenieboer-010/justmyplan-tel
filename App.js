@@ -55,7 +55,7 @@ function MainApp() {
   const {
     lists, outgoingShares, incomingShares, sharedWithMe, shareListsMap, personColors,
     invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,
-    saveShareLists, setPersonColor,
+    saveShareLists, setPersonColor, pagerEnabled,
   } = useData();
 
   const ownLists = lists.filter(l => !l.isShared);
@@ -153,6 +153,7 @@ function MainApp() {
           ref={scrollRef}
           horizontal
           pagingEnabled
+          scrollEnabled={pagerEnabled}
           style={{ flex: 1 }}
           decelerationRate="fast"
           showsHorizontalScrollIndicator={false}

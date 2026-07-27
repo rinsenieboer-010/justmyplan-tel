@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadTasks, loadEvents, loadLists,
   addTaskDB, updateTaskDB, trashTaskDB,
@@ -39,6 +40,15 @@ export function DataProvider({ userId, children }) {
   const [sharedEvents, setSharedEvents] = useState([]); // afspraken van anderen
   const [lists,  setLists]  = useState(DEFAULT_LISTS);
   const [trash,  setTrash]  = useState([]);
+
+  // Swipe-pager aan/uit — TasksScreen zet dit op false terwijl je door de
+  // lijst-tabs veegt, zodat je niet per ongeluk naar Agenda/Assistent springt.
+  const [pagerEnabled, setPagerEnabled] = useState(true);
+
+  // Cache: laatst geladen data lokaal bewaren zodat de app bij het openen
+  // meteen de echte taken/lijsten toont in plaats van 2-3s lege blueprint.
+  const cacheKey     = `jmp_cache_${userId}`;
+  const freshLoaded  = useRef(false);
 
   const [personColors,  setPersonColors]  = useState({}); // email -> kleur-key
   const [outgoingShares, setOutgoingShares] = useState([]); // shares waar ik eigenaar ben
@@ -129,6 +139,15 @@ export function DataProvider({ userId, children }) {
     setSharedWithMe(accepted);
     setShareListsMap(slMap);
 
+    // Verse data → cache, zodat de volgende keer opstarten direct gevuld is
+    freshLoaded.current = true;
+    AsyncStorage.setItem(cacheKey, JSON.stringify({
+      tasks: [...t, ...sharedTasks],
+      events: ev,
+      sharedEvents: allSharedEvents,
+      lists: [...ownLists, ...sharedLists],
+    })).catch(() => {});
+
     // Openstaande uitnodigingen aan mij
     if (userEmail) {
       const { data: pend } = await supabase.from('shares')
@@ -136,6 +155,23 @@ export function DataProvider({ userId, children }) {
       setIncomingShares(pend || []);
     }
   }, [userId]);
+
+  // Direct bij openen de gecachte data tonen (tenzij het netwerk al binnen is),
+  // zodat de gebruiker niet naar een lege blueprint kijkt tijdens het laden.
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(cacheKey).then(raw => {
+      if (!active || !raw || freshLoaded.current) return;
+      try {
+        const c = JSON.parse(raw);
+        if (c.tasks)        setTasks(c.tasks);
+        if (c.events)       setEvents(c.events);
+        if (c.sharedEvents) setSharedEvents(c.sharedEvents);
+        if (c.lists)        setLists(c.lists);
+      } catch {}
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [cacheKey]);
 
   useEffect(() => { reloadAll(); }, [reloadAll]);
 
@@ -260,6 +296,7 @@ export function DataProvider({ userId, children }) {
   return (
     <DataContext.Provider value={{
       tasks, events, sharedEvents, lists, trash, userId,
+      pagerEnabled, setPagerEnabled,
       personColors, outgoingShares, incomingShares, sharedWithMe, shareListsMap,
       addTask, updateTask, deleteTask, completeTask,
       addEvent, updateEvent, deleteEvent,

@@ -413,7 +413,7 @@ const lm = StyleSheet.create({
 
 // ── TASKS SCREEN ──────────────────────────────────────────────────────────────
 export default function TasksScreen() {
-  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList } = useData();
+  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled } = useData();
   // Gedeelde lijsten tonen in de kleur van de persoon (zo zie je meteen van wie)
   const listColor = (l) => (l.isShared ? (PERSON_COLORS[personColors[l.ownerEmail]]?.dot || l.color) : l.color);
   const [activeList, setActiveList]     = useState('mine');
@@ -512,12 +512,11 @@ export default function TasksScreen() {
     setModalTask(undefined);
   };
 
+  // Eén tik op het bolletje voltooit de taak meteen (geen bevestiging). De taak
+  // gaat naar de prullenbak (soft-delete) en is dus terug te halen.
   const handleComplete = (task) => {
     if (task.isShared && task.permission !== 'edit') return;
-    Alert.alert('Taak voltooien', 'Markeer als voltooid?', [
-      { text: 'Annuleer', style: 'cancel' },
-      { text: 'Voltooien', onPress: () => completeTask(task) },
-    ]);
+    completeTask(task);
   };
 
   const renderTask = ({ item }) => {
@@ -566,7 +565,12 @@ export default function TasksScreen() {
     <View style={s.container}>
       {/* List tabs */}
       <View style={{ flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb', alignItems: 'center' }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flex: 1 }} contentContainerStyle={s.listTabsContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flex: 1 }} contentContainerStyle={s.listTabsContent}
+          onTouchStart={() => setPagerEnabled(false)}
+          onTouchEnd={() => setPagerEnabled(true)}
+          onTouchCancel={() => setPagerEnabled(true)}
+          onScrollEndDrag={() => setPagerEnabled(true)}
+          onMomentumScrollEnd={() => setPagerEnabled(true)}>
           {lists.map(l => (
             <TouchableOpacity
               key={l.id}
