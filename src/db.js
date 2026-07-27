@@ -35,6 +35,22 @@ export async function deleteTaskDB(id) {
   await supabase.from('tasks').delete().eq('id', id);
 }
 
+// Verwijderde/voltooide taken (soft-deleted) laden voor de prullenbak-weergave
+export async function loadDeletedTasks(userId) {
+  const { data } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('user_id', userId)
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  return (data || []).map(dbToTask);
+}
+
+// Taak terughalen uit de prullenbak
+export async function restoreTaskDB(id) {
+  await supabase.from('tasks').update({ deleted_at: null }).eq('id', id);
+}
+
 function taskToDB(t) {
   return {
     id:       typeof t.id === 'number' ? undefined : t.id,
@@ -62,6 +78,7 @@ function dbToTask(r) {
     recurrence: r.recurrence || null,
     reminderTime: r.reminder_time || null,
     lastCompletedAt: r.last_completed_at || null,
+    deletedAt: r.deleted_at || null,
   };
 }
 

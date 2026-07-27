@@ -2,7 +2,8 @@ import { createContext, useContext, useState, useEffect, useCallback, useRef } f
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   loadTasks, loadEvents, loadLists,
-  addTaskDB, updateTaskDB, trashTaskDB,
+  addTaskDB, updateTaskDB, trashTaskDB, deleteTaskDB,
+  loadDeletedTasks, restoreTaskDB,
   addEventDB, updateEventDB, deleteEventDB,
   upsertListDB, deleteListDB,
   loadShareLists, setShareLists,
@@ -241,6 +242,10 @@ export function DataProvider({ userId, children }) {
     setTrash(t => [...t, { ...task, completedAt: new Date().toISOString() }]);
     await reloadAll();
   };
+  // Prullenbak: verwijderde/voltooide taken ophalen, terughalen of definitief wissen
+  const loadDeleted = async () => loadDeletedTasks(userId);
+  const restoreTask = async (id) => { await restoreTaskDB(id); await reloadAll(); };
+  const purgeTask   = async (id) => { await deleteTaskDB(id); };
 
   // ── Afspraken ──
   const addEvent = async (event) => { const saved = await addEventDB(userId, event); await reloadAll(); return saved; };
@@ -299,6 +304,7 @@ export function DataProvider({ userId, children }) {
       pagerEnabled, setPagerEnabled,
       personColors, outgoingShares, incomingShares, sharedWithMe, shareListsMap,
       addTask, updateTask, deleteTask, completeTask,
+      loadDeleted, restoreTask, purgeTask,
       addEvent, updateEvent, deleteEvent,
       addList, updateList, deleteList,
       invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,

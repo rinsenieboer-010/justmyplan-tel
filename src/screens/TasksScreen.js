@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform,
@@ -411,6 +411,94 @@ const lm = StyleSheet.create({
   saveBtnText:    { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
 
+// ── TRASH / VOLTOOID MODAL ────────────────────────────────────────────────────
+function TrashModal({ onClose }) {
+  const { loadDeleted, restoreTask, purgeTask } = useData();
+  const [items, setItems] = useState(null); // null = nog aan het laden
+
+  useEffect(() => { loadDeleted().then(setItems).catch(() => setItems([])); }, []);
+
+  const handleRestore = async (id) => {
+    setItems(list => list.filter(t => t.id !== id));
+    await restoreTask(id);
+  };
+  const handlePurge = (task) => {
+    Alert.alert('Definitief verwijderen', `"${task.title}" permanent verwijderen? Dit kan niet ongedaan worden gemaakt.`, [
+      { text: 'Annuleer', style: 'cancel' },
+      { text: 'Verwijderen', style: 'destructive', onPress: async () => {
+        setItems(list => list.filter(t => t.id !== task.id));
+        await purgeTask(task.id);
+      }},
+    ]);
+  };
+
+  const fmtWhen = (iso) => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}`;
+  };
+
+  return (
+    <Modal animationType="slide" transparent onRequestClose={onClose}>
+      <View style={tr.overlay}>
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <View style={tr.sheet}>
+          <View style={tr.handle} />
+          <View style={tr.headerRow}>
+            <Text style={tr.title}>Voltooid & verwijderd</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Ionicons name="close" size={22} color="#9ca3af" />
+            </TouchableOpacity>
+          </View>
+
+          {items === null ? (
+            <View style={tr.empty}><Text style={tr.emptyText}>Laden...</Text></View>
+          ) : items.length === 0 ? (
+            <View style={tr.empty}>
+              <Ionicons name="checkmark-done-outline" size={36} color="#e5e7eb" />
+              <Text style={tr.emptyText}>Niets in de prullenbak</Text>
+            </View>
+          ) : (
+            <ScrollView style={{ maxHeight: 420 }} showsVerticalScrollIndicator={false}>
+              {items.map(task => (
+                <View key={task.id} style={tr.row}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={tr.rowTitle} numberOfLines={1}>{task.title}</Text>
+                    {task.deletedAt ? <Text style={tr.rowMeta}>Verwijderd {fmtWhen(task.deletedAt)}</Text> : null}
+                  </View>
+                  <TouchableOpacity style={tr.restoreBtn} onPress={() => handleRestore(task.id)}>
+                    <Ionicons name="arrow-undo-outline" size={15} color="#2563EB" />
+                    <Text style={tr.restoreText}>Herstel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={tr.purgeBtn} onPress={() => handlePurge(task)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                    <Ionicons name="trash-outline" size={16} color="#DC2626" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const tr = StyleSheet.create({
+  overlay:    { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
+  sheet:      { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, maxHeight: '85%' },
+  handle:     { width: 36, height: 4, backgroundColor: '#d1d5db', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  headerRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  title:      { fontSize: 18, fontWeight: '700', color: '#111827' },
+  empty:      { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 48 },
+  emptyText:  { fontSize: 14, color: '#9ca3af' },
+  row:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  rowTitle:   { fontSize: 15, color: '#374151', fontWeight: '500' },
+  rowMeta:    { fontSize: 11, color: '#9ca3af', marginTop: 2 },
+  restoreBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DBEAFE', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
+  restoreText:{ fontSize: 12, color: '#2563EB', fontWeight: '700' },
+  purgeBtn:   { padding: 6 },
+});
+
 // ── TASKS SCREEN ──────────────────────────────────────────────────────────────
 export default function TasksScreen() {
   const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled } = useData();
@@ -419,6 +507,7 @@ export default function TasksScreen() {
   const [activeList, setActiveList]     = useState('mine');
   const [modalTask, setModalTask]       = useState(undefined); // undefined = closed, null = new task
   const [showListModal, setShowListModal] = useState(false);
+  const [showTrash, setShowTrash]         = useState(false);
   const [editingListId, setEditingListId] = useState(null);
   const [editLabel, setEditLabel]         = useState('');
 
@@ -600,6 +689,9 @@ export default function TasksScreen() {
             <Ionicons name="trash-outline" size={18} color="#9ca3af" />
           </TouchableOpacity>
         )}
+        <TouchableOpacity onPress={() => setShowTrash(true)} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Ionicons name="archive-outline" size={17} color="#9ca3af" />
+        </TouchableOpacity>
         <TouchableOpacity onPress={() => setShowListModal(true)} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Ionicons name="add" size={22} color="#9ca3af" />
         </TouchableOpacity>
@@ -667,6 +759,9 @@ export default function TasksScreen() {
       {showListModal && (
         <ListModal onSave={handleAddList} onClose={() => setShowListModal(false)} />
       )}
+
+      {/* Prullenbak / voltooid */}
+      {showTrash && <TrashModal onClose={() => setShowTrash(false)} />}
     </View>
   );
 }
