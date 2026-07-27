@@ -183,10 +183,13 @@ const em = StyleSheet.create({
 
 // ── CALENDAR SCREEN ───────────────────────────────────────────────────────────
 export default function CalendarScreen() {
-  const { tasks, events, sharedEvents, personColors, outgoingShares, addEvent, updateEvent, deleteEvent } = useData();
+  const { tasks, events, sharedEvents, personColors, outgoingShares, addEvent, updateEvent, deleteEvent, activeScreen } = useData();
   const [weekBase, setWeekBase]     = useState(new Date());
   const [modalEvent, setModalEvent] = useState(undefined);
   const scrollRef = useRef(null);
+
+  // Bij het openen van de agenda altijd terug naar de huidige week (index 1 = Agenda)
+  useEffect(() => { if (activeScreen === 1) setWeekBase(new Date()); }, [activeScreen]);
 
   const weekDates = getWeekDates(weekBase);
   const todayKey  = getTodayKey();
@@ -280,8 +283,8 @@ export default function CalendarScreen() {
           Rekt mee als er veel taken op één dag staan. */}
       {hasAnyDeadlineTask && (
         <View style={s.taskRow}>
-          <View style={{ width: TIME_COL, justifyContent: 'center' }}>
-            <Text style={s.taskRowLabel}>taken</Text>
+          <View style={{ width: TIME_COL, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={s.taskRowLabel} numberOfLines={1}>taken</Text>
           </View>
           {weekDates.map((d, i) => {
             const dayTasks = tasks.filter(t => t.deadline === dateKey(d) && !t.reminderTime);
@@ -439,7 +442,7 @@ const s = StyleSheet.create({
   allDayBlock:    { position: 'absolute', top: 0, width: '42%', borderRadius: 4, borderWidth: 1, borderLeftWidth: 3, paddingHorizontal: 3, paddingVertical: 3, overflow: 'hidden', zIndex: 0 },
   allDayBlockText:{ fontSize: 9, fontWeight: '700', lineHeight: 11 },
   taskRow:        { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f3f4f6', paddingVertical: 3, minHeight: 24 },
-  taskRowLabel:   { fontSize: 8, fontWeight: '700', color: '#9ca3af', letterSpacing: 0.5, textTransform: 'uppercase', textAlign: 'center' },
+  taskRowLabel:   { fontSize: 9, fontWeight: '700', color: '#9ca3af', letterSpacing: 1, textTransform: 'uppercase', textAlign: 'center', transform: [{ rotate: '-90deg' }] },
   taskCol:        { flex: 1, paddingHorizontal: 2, gap: 2, borderLeftWidth: 1, borderLeftColor: '#f3f4f6' },
   taskChip:       { borderLeftWidth: 2, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 },
   taskChipText:   { fontSize: 9, fontWeight: '600' },

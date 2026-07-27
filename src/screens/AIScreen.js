@@ -13,8 +13,6 @@ import { pad, MONTHS } from '../utils';
 const today = new Date();
 const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
 
-const SUGGESTIONS = ['Plan mijn taken in', 'Vrije momenten deze week', 'Goede voornemens inplannen'];
-
 const TOOLS = [
   {
     name: 'create_event',
@@ -352,15 +350,6 @@ export default function AIScreen() {
           );
         }}
       />
-
-      {/* Suggestions */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.suggestionsRow} contentContainerStyle={s.suggestions}>
-        {SUGGESTIONS.map(q => (
-          <TouchableOpacity key={q} style={s.suggestionChip} onPress={() => send(q)}>
-            <Text style={s.suggestionText}>{q}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
 
       {/* Pending image preview */}
       {pendingImage && (

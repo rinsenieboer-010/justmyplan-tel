@@ -46,6 +46,10 @@ export function DataProvider({ userId, children }) {
   // lijst-tabs veegt, zodat je niet per ongeluk naar Agenda/Assistent springt.
   const [pagerEnabled, setPagerEnabled] = useState(true);
 
+  // Welk scherm nu actief is (0=Taken, 1=Agenda, 2=Assistent) — o.a. zodat de
+  // agenda naar de huidige week kan springen zodra je hem opent.
+  const [activeScreen, setActiveScreen] = useState(0);
+
   // Cache: laatst geladen data lokaal bewaren zodat de app bij het openen
   // meteen de echte taken/lijsten toont in plaats van 2-3s lege blueprint.
   const cacheKey     = `jmp_cache_${userId}`;
@@ -302,6 +306,7 @@ export function DataProvider({ userId, children }) {
     <DataContext.Provider value={{
       tasks, events, sharedEvents, lists, trash, userId,
       pagerEnabled, setPagerEnabled,
+      activeScreen, setActiveScreen,
       personColors, outgoingShares, incomingShares, sharedWithMe, shareListsMap,
       addTask, updateTask, deleteTask, completeTask,
       loadDeleted, restoreTask, purgeTask,

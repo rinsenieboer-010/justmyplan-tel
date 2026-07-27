@@ -55,8 +55,11 @@ function MainApp() {
   const {
     lists, outgoingShares, incomingShares, sharedWithMe, shareListsMap, personColors,
     invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,
-    saveShareLists, setPersonColor, pagerEnabled,
+    saveShareLists, setPersonColor, pagerEnabled, setActiveScreen,
   } = useData();
+
+  // Houd de context op de hoogte van het actieve scherm (voor o.a. de agenda-reset)
+  useEffect(() => { setActiveScreen(current); }, [current]);
 
   const ownLists = lists.filter(l => !l.isShared);
 
