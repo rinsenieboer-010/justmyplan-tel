@@ -41,6 +41,7 @@ function MainApp() {
   const isJumping                   = useRef(false);
   const [current, setCurrent]       = useState(0);
   const [showSettings, setShowSettings]     = useState(false);
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [showAgents, setShowAgents]         = useState(false);
   const [showImport, setShowImport]         = useState(false);
   const [apiKey, setApiKey]               = useState(null);
@@ -285,54 +286,19 @@ function MainApp() {
               {/* ── Delen ── */}
               <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:12 }}>DELEN</Text>
 
-              {/* Uitnodigen: e-mail, dan vooraf rechten + welke lijsten je deelt */}
-              <TextInput
-                style={{ backgroundColor:'#111827', borderWidth:1, borderColor:'#3f3f46', borderRadius:6, paddingHorizontal:10, paddingVertical:8, fontSize:12, color:'#f9fafb', marginBottom:8 }}
-                placeholder="e-mailadres uitnodigen..." placeholderTextColor="#6b7280"
-                value={inviteEmail} onChangeText={setInviteEmail}
-                keyboardType="email-address" autoCapitalize="none"
-              />
-
-              <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:0.5, marginBottom:6 }}>RECHTEN</Text>
-              <View style={{ flexDirection:'row', gap:8, marginBottom:12 }}>
-                {[['view','👁  Bekijken'], ['edit','✏️  Bewerken']].map(([p, label]) => (
-                  <TouchableOpacity key={p} onPress={() => setInvitePermission(p)}
-                    style={{ flex:1, borderWidth:1, borderColor: invitePermission === p ? '#2563EB' : '#3f3f46', backgroundColor: invitePermission === p ? '#1e3a8a' : 'transparent', borderRadius:8, paddingVertical:9, alignItems:'center' }}>
-                    <Text style={{ color: invitePermission === p ? '#fff' : '#9ca3af', fontSize:12, fontWeight:'600' }}>{label}</Text>
-                  </TouchableOpacity>
-                ))}
+              {/* Uitnodigen: e-mail + knop opent een pop-up met rechten + lijsten */}
+              <View style={{ flexDirection:'row', gap:8, marginBottom:16 }}>
+                <TextInput
+                  style={{ flex:1, backgroundColor:'#111827', borderWidth:1, borderColor:'#3f3f46', borderRadius:6, paddingHorizontal:10, paddingVertical:8, fontSize:12, color:'#f9fafb' }}
+                  placeholder="e-mailadres uitnodigen..." placeholderTextColor="#6b7280"
+                  value={inviteEmail} onChangeText={setInviteEmail}
+                  keyboardType="email-address" autoCapitalize="none"
+                />
+                <TouchableOpacity onPress={() => inviteEmail.trim() && setInviteModalOpen(true)} disabled={!inviteEmail.trim()}
+                  style={{ backgroundColor:'#2563EB', borderRadius:6, paddingHorizontal:14, justifyContent:'center', opacity: inviteEmail.trim() ? 1 : 0.5 }}>
+                  <Text style={{ color:'#fff', fontSize:12, fontWeight:'600' }}>Uitnodigen</Text>
+                </TouchableOpacity>
               </View>
-
-              <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:0.5, marginBottom:6 }}>WELKE LIJSTEN DEEL JE</Text>
-              {ownLists.length === 0 ? (
-                <Text style={{ fontSize:12, color:'#3f3f46', marginBottom:12 }}>Je hebt nog geen eigen lijsten.</Text>
-              ) : (
-                <View style={{ marginBottom:12 }}>
-                  {ownLists.map(l => {
-                    const on = inviteLists.includes(l.id);
-                    return (
-                      <TouchableOpacity key={l.id}
-                        onPress={() => setInviteLists(prev => prev.includes(l.id) ? prev.filter(x => x !== l.id) : [...prev, l.id])}
-                        style={{ flexDirection:'row', alignItems:'center', gap:10, paddingVertical:9 }}>
-                        <View style={{ width:10, height:10, borderRadius:5, backgroundColor:l.color }} />
-                        <Text style={{ flex:1, color:'#f9fafb', fontSize:13 }}>{l.label}</Text>
-                        <View style={{ width:22, height:22, borderRadius:6, borderWidth:2, borderColor: on ? '#2563EB' : '#3f3f46', backgroundColor: on ? '#2563EB' : 'transparent', justifyContent:'center', alignItems:'center' }}>
-                          {on && <Ionicons name="checkmark" size={15} color="#fff" />}
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              )}
-              <Text style={{ fontSize:11, color:'#6b7280', marginBottom:10, lineHeight:16 }}>
-                Afspraken deel je per stuk in de agenda. Lijsten en rechten pas je later nog aan bij de persoon.
-              </Text>
-
-              <TouchableOpacity onPress={handleInvite}
-                style={{ backgroundColor:'#2563EB', borderRadius:8, paddingVertical:11, alignItems:'center', marginBottom:14, opacity: inviteEmail.trim() ? 1 : 0.5 }}
-                disabled={!inviteEmail.trim()}>
-                <Text style={{ color:'#fff', fontSize:13, fontWeight:'700' }}>Uitnodigen &amp; delen</Text>
-              </TouchableOpacity>
 
               {/* Personen: kleur + welke lijsten ik deel */}
               {peopleEmails.length === 0 && (
@@ -483,6 +449,65 @@ function MainApp() {
               </ScrollView>
             </TouchableOpacity>
           </TouchableOpacity>
+        </Modal>
+
+        {/* ── Uitnodig-popup: kies rechten + lijsten, dan verzenden ── */}
+        <Modal visible={inviteModalOpen} transparent animationType="fade" onRequestClose={() => setInviteModalOpen(false)}>
+          <KeyboardAvoidingView style={{ flex:1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <TouchableOpacity style={{ flex:1, backgroundColor:'rgba(0,0,0,0.6)', justifyContent:'center', alignItems:'center' }}
+            activeOpacity={1} onPress={() => setInviteModalOpen(false)}>
+            <TouchableOpacity activeOpacity={1} style={{ backgroundColor:'#18181b', borderRadius:16, width:320, maxHeight:'85%', padding:24 }}>
+              <View style={{ flexDirection:'row', alignItems:'center', marginBottom:16 }}>
+                <Text style={{ flex:1, color:'#f9fafb', fontSize:14, fontWeight:'700', marginRight:8 }} numberOfLines={1}>Uitnodigen: {inviteEmail.trim()}</Text>
+                <TouchableOpacity onPress={() => setInviteModalOpen(false)}>
+                  <Ionicons name="close" size={22} color="#9ca3af" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:8 }}>RECHTEN</Text>
+                <View style={{ flexDirection:'row', gap:8, marginBottom:16 }}>
+                  {[['view','👁  Bekijken'], ['edit','✏️  Bewerken']].map(([p, label]) => (
+                    <TouchableOpacity key={p} onPress={() => setInvitePermission(p)}
+                      style={{ flex:1, borderWidth:1, borderColor: invitePermission === p ? '#2563EB' : '#3f3f46', backgroundColor: invitePermission === p ? '#1e3a8a' : 'transparent', borderRadius:8, paddingVertical:9, alignItems:'center' }}>
+                      <Text style={{ color: invitePermission === p ? '#fff' : '#9ca3af', fontSize:12, fontWeight:'600' }}>{label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginBottom:8 }}>WELKE LIJSTEN DEEL JE</Text>
+                {ownLists.length === 0 ? (
+                  <Text style={{ fontSize:12, color:'#3f3f46', marginBottom:12 }}>Je hebt nog geen eigen lijsten.</Text>
+                ) : (
+                  <View style={{ marginBottom:12 }}>
+                    {ownLists.map(l => {
+                      const on = inviteLists.includes(l.id);
+                      return (
+                        <TouchableOpacity key={l.id}
+                          onPress={() => setInviteLists(prev => prev.includes(l.id) ? prev.filter(x => x !== l.id) : [...prev, l.id])}
+                          style={{ flexDirection:'row', alignItems:'center', gap:10, paddingVertical:10, borderBottomWidth:1, borderBottomColor:'#27272a' }}>
+                          <View style={{ width:10, height:10, borderRadius:5, backgroundColor:l.color }} />
+                          <Text style={{ flex:1, color:'#f9fafb', fontSize:14 }} numberOfLines={1}>{l.label}</Text>
+                          <View style={{ width:24, height:24, borderRadius:6, borderWidth:2, borderColor: on ? '#2563EB' : '#3f3f46', backgroundColor: on ? '#2563EB' : 'transparent', justifyContent:'center', alignItems:'center' }}>
+                            {on && <Ionicons name="checkmark" size={16} color="#fff" />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+                <Text style={{ fontSize:11, color:'#6b7280', marginTop:8, marginBottom:16, lineHeight:16 }}>
+                  Afspraken deel je per stuk in de agenda. Later nog aan te passen bij de persoon.
+                </Text>
+
+                <TouchableOpacity onPress={async () => { await handleInvite(); setInviteModalOpen(false); }}
+                  style={{ backgroundColor:'#2563EB', borderRadius:8, paddingVertical:12, alignItems:'center' }}>
+                  <Text style={{ color:'#fff', fontSize:13, fontWeight:'700' }}>Verzenden</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </TouchableOpacity>
+          </TouchableOpacity>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* ── Agent Management modal ── */}
