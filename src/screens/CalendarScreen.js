@@ -183,7 +183,9 @@ const em = StyleSheet.create({
 
 // ── CALENDAR SCREEN ───────────────────────────────────────────────────────────
 export default function CalendarScreen() {
-  const { tasks, events, sharedEvents, personColors, outgoingShares, addEvent, updateEvent, deleteEvent, activeScreen } = useData();
+  const { tasks, events, sharedEvents: allSharedEvents, personColors, outgoingShares, addEvent, updateEvent, deleteEvent, activeScreen, isSharedVisible } = useData();
+  // Gedeelde agenda's die de ontvanger heeft verborgen niet tonen
+  const sharedEvents = allSharedEvents.filter(e => isSharedVisible('cal:' + e.ownerId));
   const [weekBase, setWeekBase]     = useState(new Date());
   const [modalEvent, setModalEvent] = useState(undefined);
   const scrollRef = useRef(null);

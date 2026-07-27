@@ -501,7 +501,9 @@ const tr = StyleSheet.create({
 
 // ── TASKS SCREEN ──────────────────────────────────────────────────────────────
 export default function TasksScreen() {
-  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled } = useData();
+  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled, isSharedVisible } = useData();
+  // Gedeelde lijsten die de ontvanger heeft verborgen niet als tab tonen
+  const visibleLists = lists.filter(l => !l.isShared || isSharedVisible(l.id));
   // Gedeelde lijsten tonen in de kleur van de persoon (zo zie je meteen van wie)
   const listColor = (l) => (l.isShared ? (PERSON_COLORS[personColors[l.ownerEmail]]?.dot || l.color) : l.color);
   const [activeList, setActiveList]     = useState('mine');
@@ -547,6 +549,11 @@ export default function TasksScreen() {
       delete prioTimers.current[id];
     }, 2000);
   };
+
+  // Staat de actieve lijst op een verborgen gedeelde lijst? Val terug op 'mine'.
+  useEffect(() => {
+    if (!visibleLists.some(l => l.id === activeList)) setActiveList('mine');
+  }, [visibleLists, activeList]);
 
   const activeListObj = lists.find(l => l.id === activeList) || lists[0];
   const isSharedList  = activeListObj?.isShared === true;
@@ -660,7 +667,7 @@ export default function TasksScreen() {
           onTouchCancel={() => setPagerEnabled(true)}
           onScrollEndDrag={() => setPagerEnabled(true)}
           onMomentumScrollEnd={() => setPagerEnabled(true)}>
-          {lists.map(l => (
+          {visibleLists.map(l => (
             <TouchableOpacity
               key={l.id}
               style={[s.listTab, activeList === l.id && { borderBottomColor: listColor(l), borderBottomWidth: 2 }]}

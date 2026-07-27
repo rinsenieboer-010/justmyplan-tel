@@ -55,6 +55,25 @@ export function DataProvider({ userId, children }) {
   const cacheKey     = `jmp_cache_${userId}`;
   const freshLoaded  = useRef(false);
 
+  // Zichtbaarheid van gedeelde items die de ontvanger zelf regelt (lokaal).
+  // Bevat sleutels: een gedeelde lijst-id (verbergt die takenlijst) of
+  // `cal:<ownerId>` (verbergt de gedeelde agenda van die persoon).
+  const hiddenKey = `jmp_hidden_${userId}`;
+  const [hiddenShared, setHiddenShared] = useState([]);
+  useEffect(() => {
+    AsyncStorage.getItem(hiddenKey).then(raw => {
+      if (raw) { try { setHiddenShared(JSON.parse(raw)); } catch {} }
+    }).catch(() => {});
+  }, [hiddenKey]);
+  const toggleSharedVisible = (key) => {
+    setHiddenShared(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      AsyncStorage.setItem(hiddenKey, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+  const isSharedVisible = (key) => !hiddenShared.includes(key);
+
   const [personColors,  setPersonColors]  = useState({}); // email -> kleur-key
   const [outgoingShares, setOutgoingShares] = useState([]); // shares waar ik eigenaar ben
   const [incomingShares, setIncomingShares] = useState([]); // openstaande uitnodigingen aan mij
@@ -274,12 +293,15 @@ export function DataProvider({ userId, children }) {
   const deleteList = async (id) => { await deleteListDB(userId, id); await reloadAll(); };
 
   // ── Delen beheren ──
-  const invitePerson = async (email, permission) => {
+  // Uitnodigen: meteen 'accepted' (geen aparte accepteerstap) en de gekozen
+  // lijsten direct meesturen zodat de ander ze meteen ziet.
+  const invitePerson = async (email, permission, listObjs = []) => {
     const { data: { session } } = await supabase.auth.getSession();
-    await supabase.from('shares').insert({
+    const { data: inserted } = await supabase.from('shares').insert({
       owner_id: userId, owner_email: session?.user?.email,
-      invited_email: email.trim().toLowerCase(), permission,
-    });
+      invited_email: email.trim().toLowerCase(), permission, status: 'accepted',
+    }).select().single();
+    if (inserted && listObjs.length) await setShareLists(inserted.id, listObjs);
     await reloadAll();
   };
   const removeShare = async (id) => { await supabase.from('shares').delete().eq('id', id); await reloadAll(); };
@@ -307,6 +329,7 @@ export function DataProvider({ userId, children }) {
       tasks, events, sharedEvents, lists, trash, userId,
       pagerEnabled, setPagerEnabled,
       activeScreen, setActiveScreen,
+      hiddenShared, toggleSharedVisible, isSharedVisible,
       personColors, outgoingShares, incomingShares, sharedWithMe, shareListsMap,
       addTask, updateTask, deleteTask, completeTask,
       loadDeleted, restoreTask, purgeTask,
