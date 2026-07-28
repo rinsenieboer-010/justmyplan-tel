@@ -15,12 +15,16 @@ import { ensureNotificationPermissions, syncNotifications } from '../notificatio
 
 const DataContext = createContext(null);
 
+// Alleen 'Mijn taken' is een vaste standaardlijst (niet te verwijderen). De rest
+// maakt de gebruiker zelf; verwijderde lijsten blijven weg.
 export const DEFAULT_LISTS = [
-  { id: 'mine',       label: 'Mijn taken',  color: '#2563EB' },
-  { id: 'school',     label: 'School',      color: '#E6B400' },
-  { id: 'huishouden', label: 'Huishouden',  color: '#DC2626' },
-  { id: 'werk',       label: 'Werk',        color: '#DC2626' },
+  { id: 'mine', label: 'Mijn taken', color: '#2563EB' },
 ];
+
+// Labels/kleuren voor oude standaardlijsten, zodat lijsten die nog taken bevatten
+// netjes getoond blijven (geen taken kwijtraken) ook al zijn ze geen default meer.
+const LEGACY_LIST_LABELS = { school: 'School', huishouden: 'Huishouden', werk: 'Werk' };
+const LEGACY_LIST_COLORS = { school: '#E6B400', huishouden: '#DC2626', werk: '#DC2626' };
 
 // Namespace gedeelde lijst-IDs zodat ze niet botsen met eigen IDs
 export function prefixSharedId(ownerId, id) {
@@ -152,7 +156,19 @@ export function DataProvider({ userId, children }) {
       slMap[share.id] = sl.map(x => x.listId);
     }));
 
-    const ownLists = ls || DEFAULT_LISTS;
+    const ownLists = [...(ls || DEFAULT_LISTS)];
+    // 'Mijn taken' altijd aanwezig en bovenaan
+    if (!ownLists.some(l => l.id === 'mine')) ownLists.unshift({ ...DEFAULT_LISTS[0] });
+    // Herstel lijsten die nog eigen taken bevatten maar niet (meer) in de lijst
+    // staan, zodat lege verwijderde lijsten wegblijven maar taken nooit verdwijnen.
+    const known = new Set(ownLists.map(l => l.id));
+    t.forEach(task => {
+      const id = task.list || 'mine';
+      if (!known.has(id)) {
+        known.add(id);
+        ownLists.push({ id, label: LEGACY_LIST_LABELS[id] || id, color: LEGACY_LIST_COLORS[id] || '#9ca3af' });
+      }
+    });
 
     setTasks([...t, ...sharedTasks]);
     setEvents(ev);
@@ -290,16 +306,16 @@ export function DataProvider({ userId, children }) {
   const updateList = async (list) => {
     await syncOwnLists(ownListObjs().map(l => l.id === list.id ? { ...l, label: list.label, color: list.color ?? l.color } : l));
   };
-  const deleteList = async (id) => { await deleteListDB(userId, id); await reloadAll(); };
+  const deleteList = async (id) => { if (id === 'mine') return; await deleteListDB(userId, id); await reloadAll(); };
 
-  // ── Delen beheren ──
-  // Uitnodigen: meteen 'accepted' (geen aparte accepteerstap) en de gekozen
-  // lijsten direct meesturen zodat de ander ze meteen ziet.
+  // ── Delen beheren (Facebook-stijl connecties) ──
+  // Uitnodigen = een verzoek versturen (pending). De gekozen lijsten gaan mee en
+  // worden actief zodra de ander accepteert.
   const invitePerson = async (email, permission, listObjs = []) => {
     const { data: { session } } = await supabase.auth.getSession();
     const { data: inserted } = await supabase.from('shares').insert({
       owner_id: userId, owner_email: session?.user?.email,
-      invited_email: email.trim().toLowerCase(), permission, status: 'accepted',
+      invited_email: email.trim().toLowerCase(), permission, status: 'pending',
     }).select().single();
     if (inserted && listObjs.length) await setShareLists(inserted.id, listObjs);
     await reloadAll();
@@ -308,7 +324,22 @@ export function DataProvider({ userId, children }) {
   const updateSharePermission = async (id, permission) => {
     await supabase.from('shares').update({ permission }).eq('id', id); await reloadAll();
   };
-  const acceptInvitation = async (id) => { await supabase.from('shares').update({ status: 'accepted' }).eq('id', id); await reloadAll(); };
+  // Accepteren = tweezijdige connectie: het verzoek accepteren én meteen een
+  // omgekeerde connectie terug aanmaken, zodat beide kanten kunnen delen. Eén actie.
+  const acceptInvitation = async (share) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const myEmail = session?.user?.email;
+    await supabase.from('shares').update({ status: 'accepted' }).eq('id', share.id);
+    const { data: existing } = await supabase.from('shares')
+      .select('id').eq('owner_id', userId).eq('invited_email', share.owner_email);
+    if (!existing || existing.length === 0) {
+      await supabase.from('shares').insert({
+        owner_id: userId, owner_email: myEmail,
+        invited_email: share.owner_email, permission: 'view', status: 'accepted',
+      });
+    }
+    await reloadAll();
+  };
   const declineInvitation = async (id) => { await supabase.from('shares').update({ status: 'declined' }).eq('id', id); await reloadAll(); };
 
   // Welke van mijn lijsten deel ik met deze share (lijst van objecten)

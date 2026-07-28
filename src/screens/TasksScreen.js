@@ -558,7 +558,7 @@ export default function TasksScreen() {
   const activeListObj = lists.find(l => l.id === activeList) || lists[0];
   const isSharedList  = activeListObj?.isShared === true;
   const canEdit       = !isSharedList || activeListObj?.permission === 'edit';
-  const canDeleteList = !isSharedList && lists.filter(l => !l.isShared).length > 1;
+  const canDeleteList = !isSharedList && activeList !== 'mine' && lists.filter(l => !l.isShared).length > 1;
 
   const handleAddList = async (label, color) => {
     const newList = { id: 'list_' + Date.now(), label, color };

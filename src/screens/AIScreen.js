@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useData } from '../context/DataContext';
+import { trashTaskDB, deleteEventDB } from '../db';
 import { pad, MONTHS } from '../utils';
 
 const today = new Date();
@@ -77,6 +78,46 @@ const TOOLS = [
     },
   },
   {
+    name: 'delete_task',
+    description: 'Verwijder één taak (gaat naar de prullenbak, is terug te halen). Gebruik het task_id.',
+    input_schema: {
+      type: 'object',
+      properties: { task_id: { type: 'string', description: 'ID van de taak' } },
+      required: ['task_id'],
+    },
+  },
+  {
+    name: 'filter_and_delete_tasks',
+    description: "Verwijder alle taken waarvan de titel een zoekwoord bevat. Handig om in één keer veel taken op te ruimen (bijv. een terugkerende taak of een import).",
+    input_schema: {
+      type: 'object',
+      properties: { keyword: { type: 'string', description: 'Zoekwoord in de taaknaam (hoofdletterongevoelig)' } },
+      required: ['keyword'],
+    },
+  },
+  {
+    name: 'delete_event',
+    description: 'Verwijder één afspraak uit de agenda. Gebruik het event_id.',
+    input_schema: {
+      type: 'object',
+      properties: { event_id: { type: 'string', description: 'ID van de afspraak' } },
+      required: ['event_id'],
+    },
+  },
+  {
+    name: 'filter_and_delete_events',
+    description: "Verwijder alle afspraken waarvan de titel een zoekwoord bevat, optioneel binnen een datumbereik. Handig om een over een heel jaar herhaalde afspraak in één keer op te ruimen.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        keyword: { type: 'string', description: 'Zoekwoord in de titel (hoofdletterongevoelig)' },
+        from: { type: 'string', description: 'Optioneel: alleen afspraken vanaf deze datum YYYY-MM-DD' },
+        to:   { type: 'string', description: 'Optioneel: alleen afspraken t/m deze datum YYYY-MM-DD' },
+      },
+      required: ['keyword'],
+    },
+  },
+  {
     name: 'update_memory',
     description: 'Sla een werkwijze, voorkeur of concept op voor toekomstige gesprekken. Gebruik dit wanneer de gebruiker iets uitlegt dat ook later relevant is. Schrijf de volledige bijgewerkte inhoud — voeg toe aan het bestaande geheugen, verwijder niets zonder toestemming.',
     input_schema: {
@@ -90,7 +131,7 @@ const TOOLS = [
 ];
 
 export default function AIScreen() {
-  const { tasks, events, addTask, addEvent, updateTask } = useData();
+  const { tasks, events, addTask, addEvent, updateTask, deleteTask, deleteEvent, refresh } = useData();
   const [memory, setMemory] = useState('');
   const MEMORY_KEY = 'jmp_memory';
 
@@ -194,6 +235,26 @@ export default function AIScreen() {
           ...(input.priority !== undefined && { priority: input.priority }),
         });
       }
+    } else if (name === 'delete_task') {
+      await deleteTask(input.task_id);
+    } else if (name === 'delete_event') {
+      await deleteEvent(input.event_id);
+    } else if (name === 'filter_and_delete_tasks') {
+      // Bulk: direct wissen en daarna één keer verversen (scheelt veel reloads)
+      const keyword = (input.keyword || '').toLowerCase();
+      const matched = tasks.filter(t => t.title?.toLowerCase().includes(keyword));
+      for (const task of matched) await trashTaskDB(task.id);
+      await refresh();
+    } else if (name === 'filter_and_delete_events') {
+      const keyword = (input.keyword || '').toLowerCase();
+      const matched = events.filter(e => {
+        if (!e.title?.toLowerCase().includes(keyword)) return false;
+        if (input.from && e.date < input.from) return false;
+        if (input.to && e.date > input.to) return false;
+        return true;
+      });
+      for (const ev of matched) await deleteEventDB(ev.id);
+      await refresh();
     }
   };
 
@@ -215,7 +276,7 @@ export default function AIScreen() {
         '- task_id="' + t.id + '" | ' + t.title + ' | ' + (t.priority || 'geen prioriteit') + ' | ' + (t.status || 'geen status') + (t.deadline ? ' | deadline: ' + t.deadline : '') + (t.reminderTime ? ' | herinnering: ' + t.reminderTime : '') + (t.recurrence ? ' | herhaling: ' + t.recurrence : '')
       ).join('\n');
       const eventList = events.map(e =>
-        '- ' + e.title + ' op ' + e.date + ' van ' + pad(e.startH) + ':' + pad(e.startM) + ' tot ' + pad(e.endH) + ':' + pad(e.endM)
+        '- event_id="' + e.id + '" | ' + e.title + ' op ' + e.date + ' van ' + pad(e.startH) + ':' + pad(e.startM) + ' tot ' + pad(e.endH) + ':' + pad(e.endM)
       ).join('\n');
       const systemPrompt =
         'Je bent een slimme planningsassistent voor justmyplan.\n\n' +
@@ -225,6 +286,8 @@ export default function AIScreen() {
         '- Meerdere taken wijzigen op basis van een woord? gebruik filter_and_update_tasks met het zoekwoord\n' +
         '- Taak op een vast tijdstip (bijv. medicijnen/supplementen nemen)? gebruik create_task met reminder_time en, bij terugkerende taken, recurrence. De taak komt dan afvinkbaar in de takenlijst, verschijnt in de agenda op dat tijdstip en geeft een pushmelding. Maak hiervoor GEEN aparte agenda-afspraak.\n' +
         '- Eén taak wijzigen? gebruik update_task\n' +
+        '- Eén taak of afspraak verwijderen? gebruik delete_task (met task_id) of delete_event (met event_id)\n' +
+        '- Veel taken/afspraken tegelijk verwijderen (bijv. een over een heel jaar herhaalde afspraak of een import)? gebruik filter_and_delete_tasks of filter_and_delete_events met het zoekwoord\n' +
         '- Gebruiker stelt een vraag of voert gesprek? antwoord gewoon als tekst, geen tool nodig\n' +
         'VERBOD: Zeg NOOIT dat je iets hebt gedaan zonder de bijbehorende tool aan te roepen.\n\n' +
         'WERKWIJZE:\n' + (memory || 'Nog geen werkwijze opgeslagen.') + '\n\n' +
