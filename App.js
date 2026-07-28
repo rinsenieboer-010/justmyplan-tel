@@ -57,7 +57,7 @@ function MainApp() {
   const {
     lists, outgoingShares, incomingShares, sharedWithMe, shareListsMap, personColors,
     invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,
-    saveShareLists, setPersonColor, pagerEnabled, setActiveScreen,
+    saveShareLists, setShareCalendar, setPersonColor, pagerEnabled, setActiveScreen,
     sharedEvents, isSharedVisible, toggleSharedVisible,
   } = useData();
 
@@ -398,6 +398,16 @@ function MainApp() {
                           </TouchableOpacity>
                         ))}
                       </View>
+
+                      <Text style={{ fontSize:10, color:'#6b7280', fontWeight:'700', letterSpacing:1, marginTop:18, marginBottom:8 }}>AGENDA</Text>
+                      <TouchableOpacity onPress={() => setShareCalendar(pmOut.id, !pmOut.share_calendar)}
+                        style={{ flexDirection:'row', alignItems:'center', gap:10, paddingVertical:11, borderTopWidth:1, borderTopColor:'#27272a' }}>
+                        <Ionicons name="calendar-outline" size={14} color="#9ca3af" />
+                        <Text style={{ flex:1, color:'#f9fafb', fontSize:14 }}>Mijn agenda delen</Text>
+                        <View style={{ width:24, height:24, borderRadius:6, borderWidth:2, borderColor: pmOut.share_calendar ? '#2563EB' : '#3f3f46', backgroundColor: pmOut.share_calendar ? '#2563EB' : 'transparent', justifyContent:'center', alignItems:'center' }}>
+                          {pmOut.share_calendar && <Ionicons name="checkmark" size={16} color="#fff" />}
+                        </View>
+                      </TouchableOpacity>
                     </>
                   )}
 

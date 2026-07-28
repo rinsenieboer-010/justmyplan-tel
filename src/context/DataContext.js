@@ -342,9 +342,20 @@ export function DataProvider({ userId, children }) {
   };
   const declineInvitation = async (id) => { await supabase.from('shares').update({ status: 'declined' }).eq('id', id); await reloadAll(); };
 
-  // Welke van mijn lijsten deel ik met deze share (lijst van objecten)
+  // Welke van mijn lijsten deel ik met deze share (lijst van objecten).
+  // Werk de map meteen lokaal bij zodat het vinkje direct verschijnt; daarna pas
+  // opslaan + herladen op de achtergrond.
   const saveShareLists = async (shareId, listObjs) => {
+    setShareListsMap(m => ({ ...m, [shareId]: listObjs.map(l => l.id) }));
     await setShareLists(shareId, listObjs);
+    await reloadAll();
+  };
+
+  // Deel (of stop met delen) van je hele agenda met deze connectie. Optimistisch
+  // zodat het vinkje meteen omgaat.
+  const setShareCalendar = async (shareId, on) => {
+    setOutgoingShares(list => list.map(s => s.id === shareId ? { ...s, share_calendar: on } : s));
+    await supabase.from('shares').update({ share_calendar: on }).eq('id', shareId);
     await reloadAll();
   };
 
@@ -367,7 +378,7 @@ export function DataProvider({ userId, children }) {
       addEvent, updateEvent, deleteEvent,
       addList, updateList, deleteList,
       invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,
-      saveShareLists, setPersonColor,
+      saveShareLists, setShareCalendar, setPersonColor,
       refresh: reloadAll,
     }}>
       {children}

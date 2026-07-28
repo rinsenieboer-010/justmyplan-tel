@@ -7,6 +7,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
 import { dateKey, getTodayKey, getWeekDates, DAYS_SHORT, MONTHS, MONTHS_SHORT, pad, OWN_EVENT_COLORS, PERSON_COLORS } from '../utils';
 
+// Gedeelde agenda's krijgen één vaste, halfdoorzichtige kleur en staan achter je eigen afspraken
+const SHARED_CAL   = { bg: 'rgba(148,163,184,0.22)', border: 'rgba(100,116,139,0.55)', text: '#475569' };
 const EVENT_BG     = { blue: '#DBEAFE', red: '#FEE2E2', yellow: '#FFF176', green: '#DCFCE7', purple: '#F3E8FF' };
 const EVENT_BORDER = { blue: '#2563EB', red: '#DC2626', yellow: '#E6B400', green: '#16a34a', purple: '#9333ea' };
 const EVENT_TEXT   = { blue: '#1d4ed8', red: '#b91c1c', yellow: '#92400e', green: '#15803d', purple: '#7e22ce' };
@@ -338,10 +340,9 @@ export default function CalendarScreen() {
                   ...events.filter(e => e.date === key && isAllDay(e)).map(e => ({ ev: e, mine: true })),
                   ...sharedEvents.filter(e => e.date === key && isAllDay(e)).map(e => ({ ev: e, mine: false })),
                 ].map(({ ev, mine }, i) => {
-                  const ps = mine ? null : personStyle(ev.ownerEmail);
-                  const bg = mine ? (EVENT_BG[ev.color] || '#DBEAFE') : ps.bg;
-                  const bd = mine ? (EVENT_BORDER[ev.color] || '#2563EB') : ps.border;
-                  const tx = mine ? (EVENT_TEXT[ev.color] || '#1d4ed8') : ps.text;
+                  const bg = mine ? (EVENT_BG[ev.color] || '#DBEAFE') : SHARED_CAL.bg;
+                  const bd = mine ? (EVENT_BORDER[ev.color] || '#2563EB') : SHARED_CAL.border;
+                  const tx = mine ? (EVENT_TEXT[ev.color] || '#1d4ed8') : SHARED_CAL.text;
                   return (
                     <TouchableOpacity key={'ad-' + ev.id}
                       onPress={() => mine ? setModalEvent(ev) : Alert.alert(ev.title, `${shortName(ev.ownerEmail)} · hele dag`)}
@@ -356,15 +357,14 @@ export default function CalendarScreen() {
                   const rawTop = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
                   const top    = Math.max(0, rawTop);
                   const height = Math.max((ev.endH - HOUR_FROM + ev.endM / 60) * SLOT_H - top, 18);
-                  const ps     = personStyle(ev.ownerEmail);
                   return (
                     <TouchableOpacity
                       key={'sh-' + ev.id}
                       onPress={() => Alert.alert(ev.title, `${shortName(ev.ownerEmail)} · ${pad(ev.startH)}:${pad(ev.startM)} – ${pad(ev.endH)}:${pad(ev.endM)}`)}
-                      style={[s.sharedBlock, { top, height: height + 8, backgroundColor: ps.bg, borderColor: ps.border }]}
+                      style={[s.sharedBlock, { top, height: height + 8, left: 1, right: 1, backgroundColor: SHARED_CAL.bg, borderColor: SHARED_CAL.border }]}
                     >
-                      <Text style={[s.sharedName, { color: ps.text }]} numberOfLines={1}>{shortName(ev.ownerEmail)}</Text>
-                      <Text style={[s.eventBlockTitle, { color: ps.text }]} numberOfLines={height > 34 ? 2 : 1}>{ev.title}</Text>
+                      <Text style={[s.sharedName, { color: SHARED_CAL.text }]} numberOfLines={1}>{shortName(ev.ownerEmail)}</Text>
+                      <Text style={[s.eventBlockTitle, { color: SHARED_CAL.text }]} numberOfLines={height > 34 ? 2 : 1}>{ev.title}</Text>
                     </TouchableOpacity>
                   );
                 })}
