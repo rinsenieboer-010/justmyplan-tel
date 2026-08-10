@@ -577,14 +577,26 @@ export default function TasksScreen() {
     ]);
   };
 
-  // Eerst op datum (vroegste boven, geen datum onderaan), dan binnen dezelfde
-  // datumgroep op prioriteit (hoog → midden → laag → geen).
+  // Drie groepen, in deze volgorde:
+  //   0 — taken met een datum die nu spelen (vroegste boven)
+  //   1 — taken zonder datum
+  //   2 — herhalende taken die pas later weer aan de beurt zijn
+  // Een herhalende taak zakt dus onder de datumloze taken zolang hij nog niet
+  // speelt, en springt omhoog vanaf de dag ervoor. Binnen elke groep op
+  // prioriteit (hoog → midden → laag → geen).
+  const nowDate = new Date();
+  const tomorrowKey = dateKey(new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 1));
+  const sortGroup = (task) => {
+    if (!task.deadline) return 1;
+    if (task.recurrence && task.deadline > tomorrowKey) return 2;
+    return 0;
+  };
   const visibleTasks = tasks
     .filter(t => (t.list || 'mine') === activeList)
     .sort((a, b) => {
-      if (a.deadline && b.deadline) { if (a.deadline !== b.deadline) return a.deadline < b.deadline ? -1 : 1; }
-      else if (a.deadline && !b.deadline) return -1;
-      else if (!a.deadline && b.deadline) return 1;
+      const ga = sortGroup(a), gb = sortGroup(b);
+      if (ga !== gb) return ga - gb;
+      if (a.deadline && b.deadline && a.deadline !== b.deadline) return a.deadline < b.deadline ? -1 : 1;
       const pa = frozenPrio[a.id] !== undefined ? frozenPrio[a.id] : (a.priority || '');
       const pb = frozenPrio[b.id] !== undefined ? frozenPrio[b.id] : (b.priority || '');
       return (PRIO_RANK[pa] ?? 3) - (PRIO_RANK[pb] ?? 3);
