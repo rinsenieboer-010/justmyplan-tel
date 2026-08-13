@@ -2,10 +2,47 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform,
+  Animated, Easing,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
 import { formatDeadline, getTodayKey, dateKey, MONTHS, MONTHS_SHORT, DAYS_SHORT, PRIO_COLOR, PRIO_BG, STATUS_COLOR, STATUS_BG, PERSON_COLORS } from '../utils';
+
+// ── CHECK CIRCLE ──────────────────────────────────────────────────────────────
+// Het bolletje kleurt bij een tik eerst blauw in en pas daarna verdwijnt de
+// taak. Zonder die korte animatie zie je niet of je hem echt hebt geraakt.
+function CheckCircle({ onComplete, disabled }) {
+  const fill = useRef(new Animated.Value(0)).current;
+  const [pressed, setPressed] = useState(false);
+
+  const handlePress = () => {
+    if (disabled || pressed) return;
+    setPressed(true);
+    Animated.timing(fill, {
+      toValue: 1,
+      duration: 260,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start(({ finished }) => { if (finished) onComplete(); });
+  };
+
+  return (
+    <TouchableOpacity onPress={handlePress} style={tc.wrap} activeOpacity={0.7} disabled={disabled}>
+      <Ionicons name="ellipse-outline" size={22} color={pressed ? '#2563EB' : '#d1d5db'} />
+      <Animated.View style={[tc.fill, {
+        opacity: fill,
+        transform: [{ scale: fill.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
+      }]}>
+        <Ionicons name="checkmark-circle" size={22} color="#2563EB" />
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+const tc = StyleSheet.create({
+  wrap: { padding: 2, justifyContent: 'center', alignItems: 'center' },
+  fill: { position: 'absolute', top: 2, left: 2 },
+});
 
 // ── DATE PICKER ───────────────────────────────────────────────────────────────
 function recurrenceLabel(recurrence) {
@@ -628,21 +665,23 @@ export default function TasksScreen() {
   };
 
   const renderTask = ({ item }) => {
-    const isPast = item.deadline && item.deadline < getTodayKey();
+    const isPast  = item.deadline && item.deadline < getTodayKey();
+    const isToday = item.deadline === getTodayKey();
     const canPrio = !item.isShared;
     const dispPrio = prioOverride[item.id] ?? item.priority ?? '';
     return (
       <TouchableOpacity style={s.taskCard} onPress={() => (!item.isShared || item.permission === 'edit') ? setModalTask(item) : null} onLongPress={() => handleComplete(item)}>
         <View style={s.taskLeft}>
-          <TouchableOpacity onPress={() => handleComplete(item)} style={s.checkCircle}>
-            <Ionicons name="ellipse-outline" size={22} color="#d1d5db" />
-          </TouchableOpacity>
+          <CheckCircle
+            onComplete={() => handleComplete(item)}
+            disabled={item.isShared && item.permission !== 'edit'}
+          />
           <View style={s.taskInfo}>
             <Text style={s.taskTitle} numberOfLines={1}>{item.title}</Text>
             <View style={s.taskBadges}>
               {item.deadline && (
-                <View style={[s.badge, { backgroundColor: isPast ? '#FEE2E2' : '#f3f4f6' }]}>
-                  <Text style={[s.badgeText, { color: isPast ? '#DC2626' : '#6b7280' }]}>{formatDeadline(item.deadline)}</Text>
+                <View style={[s.badge, { backgroundColor: isPast ? '#FEE2E2' : isToday ? '#DBEAFE' : '#f3f4f6' }]}>
+                  <Text style={[s.badgeText, { color: isPast ? '#DC2626' : isToday ? '#1d4ed8' : '#6b7280' }]}>{formatDeadline(item.deadline)}</Text>
                 </View>
               )}
               {item.reminderTime && (
@@ -796,7 +835,6 @@ const s = StyleSheet.create({
   listEmpty:       { flex: 1, justifyContent: 'center' },
   taskCard:        { backgroundColor: '#fff', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   taskLeft:        { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  checkCircle:     { padding: 2 },
   taskInfo:        { flex: 1 },
   taskTitle:       { fontSize: 15, color: '#111827', fontWeight: '500', marginBottom: 4 },
   taskBadges:      { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
