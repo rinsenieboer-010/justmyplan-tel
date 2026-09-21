@@ -8,6 +8,7 @@ import * as Calendar from 'expo-calendar';
 import { useData } from '../context/DataContext';
 import { addEventDB } from '../db';
 import { dateKey } from '../utils';
+import { getOwnDeviceEventIds } from '../calendarSync';
 
 // Importvenster: van 1 maand terug tot 12 maanden vooruit. Herhalende
 // afspraken worden door iOS binnen dit venster uitgevouwen naar losse items.
@@ -62,7 +63,15 @@ export default function ImportCalendarModal({ visible, onClose }) {
     try {
       const start = new Date(); start.setMonth(start.getMonth() - MONTHS_BACK);
       const end = new Date(); end.setMonth(end.getMonth() + MONTHS_AHEAD);
-      const items = await Calendar.getEventsAsync(ids, start, end);
+      const allItems = await Calendar.getEventsAsync(ids, start, end);
+
+      // Afspraken die terugsync zelf op de telefoon heeft gezet weer inlezen zou
+      // een lus opleveren: elke import zou z'n eigen uitvoer opnieuw importeren.
+      // Daarom slaan we alles over wat wij daar hebben aangemaakt.
+      const ownIds = await getOwnDeviceEventIds(userId);
+      const items = ownIds.size
+        ? allItems.filter(ev => !ownIds.has(ev.id) && !ownIds.has(ev.instanceId))
+        : allItems;
 
       // Kleur per kalender bepalen
       const calColor = {};

@@ -17,6 +17,7 @@ import CalendarScreen from './src/screens/CalendarScreen';
 import AIScreen from './src/screens/AIScreen';
 import AgentsModal from './src/screens/AgentsModal';
 import ImportCalendarModal from './src/screens/ImportCalendarModal';
+import SyncCalendarModal from './src/screens/SyncCalendarModal';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -44,6 +45,7 @@ function MainApp() {
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [showAgents, setShowAgents]         = useState(false);
   const [showImport, setShowImport]         = useState(false);
+  const [showSync, setShowSync]             = useState(false);
   const [apiKey, setApiKey]               = useState(null);
   const [inviteEmail, setInviteEmail]     = useState('');
   const [invitePermission, setInvitePermission] = useState('view');
@@ -297,6 +299,17 @@ function MainApp() {
                 <Ionicons name="chevron-forward" size={18} color="#6b7280" />
               </TouchableOpacity>
 
+              {/* Agenda terugsync */}
+              <TouchableOpacity onPress={() => { setShowSettings(false); setShowSync(true); }}
+                style={{ flexDirection:'row', alignItems:'center', gap:10, backgroundColor:'#111827', borderRadius:8, padding:12, marginBottom:20 }}>
+                <Text style={{ fontSize:18 }}>📤</Text>
+                <View style={{ flex:1 }}>
+                  <Text style={{ color:'#f9fafb', fontSize:13, fontWeight:'600' }}>Agenda terugsync</Text>
+                  <Text style={{ color:'#6b7280', fontSize:11, marginTop:1 }}>Je afspraken automatisch naar Apple of Google schrijven</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#6b7280" />
+              </TouchableOpacity>
+
               <View style={{ height:1, backgroundColor:'#27272a', marginBottom:20 }} />
 
               {/* Agent Management */}
@@ -526,6 +539,7 @@ function MainApp() {
 
         {/* ── Apple Agenda import modal ── */}
         <ImportCalendarModal visible={showImport} onClose={() => setShowImport(false)} />
+        <SyncCalendarModal visible={showSync} onClose={() => setShowSync(false)} />
 
         {/* ── Positie-indicator (onder, horizontaal) ── */}
         <View style={{ position: 'absolute', bottom: 8, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 8, pointerEvents: 'none' }}>

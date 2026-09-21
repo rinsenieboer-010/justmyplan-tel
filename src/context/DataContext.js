@@ -12,6 +12,7 @@ import {
 import { supabase } from '../supabase';
 import { dateKey } from '../utils';
 import { ensureNotificationPermissions, syncNotifications } from '../notifications';
+import { pushEvent, removeEvent, pruneMap } from '../calendarSync';
 
 const DataContext = createContext(null);
 
@@ -219,9 +220,14 @@ export function DataProvider({ userId, children }) {
   // schema opnieuw plannen (kort gedebounced zodat een reload niet dubbel plant)
   useEffect(() => { ensureNotificationPermissions(); }, []);
   useEffect(() => {
-    const t = setTimeout(() => syncNotifications(tasks, events), 1500);
+    const t = setTimeout(() => {
+      syncNotifications(tasks, events);
+      // Koppelingen van intussen verdwenen afspraken opruimen, zodat de lokale
+      // map niet blijft aangroeien met verwijzingen naar niets.
+      pruneMap(userId, events).catch(() => {});
+    }, 1500);
     return () => clearTimeout(t);
-  }, [tasks, events]);
+  }, [tasks, events, userId]);
 
   // Realtime: eigen data + gedeelde wijzigingen
   useEffect(() => {
@@ -287,9 +293,28 @@ export function DataProvider({ userId, children }) {
   const purgeTask   = async (id) => { await deleteTaskDB(id); };
 
   // ── Afspraken ──
-  const addEvent = async (event) => { const saved = await addEventDB(userId, event); await reloadAll(); return saved; };
-  const updateEvent = async (event) => { await updateEventDB(event); await reloadAll(); };
-  const deleteEvent = async (id) => { await deleteEventDB(id); await reloadAll(); };
+  // Na elke wijziging spiegelen we naar de agenda op de telefoon (staat
+  // terugsync uit, dan doet dit niets). Bewust in een try/catch en pas ná het
+  // opslaan: dat de agenda-app dwarsligt mag nooit betekenen dat je afspraak
+  // in justmyplan zelf verloren gaat.
+  const mirror = async (fn) => { try { await fn(); } catch {} };
+
+  const addEvent = async (event) => {
+    const saved = await addEventDB(userId, event);
+    await mirror(() => pushEvent(userId, saved));
+    await reloadAll();
+    return saved;
+  };
+  const updateEvent = async (event) => {
+    await updateEventDB(event);
+    await mirror(() => pushEvent(userId, event));
+    await reloadAll();
+  };
+  const deleteEvent = async (id) => {
+    await deleteEventDB(id);
+    await mirror(() => removeEvent(userId, id));
+    await reloadAll();
+  };
 
   // ── Lijsten ──
   // Zorg dat álle eigen lijsten in de DB staan (anders resetten de andere
