@@ -12,7 +12,7 @@ import {
 import { supabase } from '../supabase';
 import { dateKey } from '../utils';
 import { ensureNotificationPermissions, syncNotifications } from '../notifications';
-import { pushEvent, removeEvent, pruneMap } from '../calendarSync';
+import { pushEvent, removeEvent, reconcile } from '../calendarSync';
 
 const DataContext = createContext(null);
 
@@ -222,9 +222,16 @@ export function DataProvider({ userId, children }) {
   useEffect(() => {
     const t = setTimeout(() => {
       syncNotifications(tasks, events);
-      // Koppelingen van intussen verdwenen afspraken opruimen, zodat de lokale
-      // map niet blijft aangroeien met verwijzingen naar niets.
-      pruneMap(userId, events).catch(() => {});
+      // Agenda gelijktrekken. Dit is de pas die wijzigingen uit de webapp naar
+      // je telefoonagenda brengt: die komen via Supabase binnen en gaan dus
+      // nooit langs addEvent/updateEvent hier.
+      //
+      // Verwijderen mag alleen als we zeker weten dat de afsprakenlijst echt
+      // van de server komt. loadEvents geeft namelijk ook een lege lijst terug
+      // als het netwerk faalt, en dat mag nooit als "alles is weg" gelden.
+      if (freshLoaded.current) {
+        reconcile(userId, events, { allowDeletes: true }).catch(() => {});
+      }
     }, 1500);
     return () => clearTimeout(t);
   }, [tasks, events, userId]);

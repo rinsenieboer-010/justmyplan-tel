@@ -6,7 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
 import {
-  getSyncConfig, enableSync, disableSync, listTargets, pushAll,
+  getSyncConfig, enableSync, disableSync, listTargets, reconcile,
 } from '../calendarSync';
 
 // Terugsync: justmyplan-afspraken naar de agenda op de telefoon. Een gekoppeld
@@ -43,12 +43,13 @@ export default function SyncCalendarModal({ visible, onClose }) {
       const next = await enableSync(userId, target);
       setCfg(next);
       setProgress('Afspraken wegschrijven...');
-      const { pushed, failed } = await pushAll(userId, events, (done, total) =>
-        setProgress(`${done} van ${total} afspraken...`));
+      const { created, updated, failed } = await reconcile(userId, events, {
+        onProgress: (done, total) => setProgress(`${done} van ${total} afspraken...`),
+      });
       setPhase('on');
       Alert.alert(
         'Terugsync staat aan',
-        `${pushed} afspraken staan nu in ${next.calendarTitle}.` +
+        `${created + updated} afspraken staan nu in ${next.calendarTitle}.` +
         (failed ? `\n${failed} lukten niet.` : ''),
       );
     } catch (err) {
@@ -69,10 +70,17 @@ export default function SyncCalendarModal({ visible, onClose }) {
   const pushNow = async () => {
     setPhase('busy');
     setProgress('Afspraken wegschrijven...');
-    const { pushed, failed } = await pushAll(userId, events, (done, total) =>
-      setProgress(`${done} van ${total} afspraken...`));
+    const { created, updated, removed, failed } = await reconcile(userId, events, {
+      allowDeletes: true,
+      onProgress: (done, total) => setProgress(`${done} van ${total} afspraken...`),
+    });
     setPhase('on');
-    Alert.alert('Klaar', `${pushed} afspraken bijgewerkt.` + (failed ? `\n${failed} lukten niet.` : ''));
+    const parts = [];
+    if (created) parts.push(`${created} toegevoegd`);
+    if (updated) parts.push(`${updated} bijgewerkt`);
+    if (removed) parts.push(`${removed} verwijderd`);
+    if (failed)  parts.push(`${failed} mislukt`);
+    Alert.alert('Klaar', parts.length ? parts.join(', ') + '.' : 'Alles stond al gelijk.');
   };
 
   const Row = ({ icon, title, sub, onPress }) => (
@@ -167,8 +175,9 @@ export default function SyncCalendarModal({ visible, onClose }) {
               </View>
 
               <Text style={{ color:'#6b7280', fontSize:11, lineHeight:17, marginBottom:16 }}>
-                Wijzigingen gaan mee zodra je ze in de app maakt. Pas je iets aan op je laptop,
-                dan landt dat hier zodra je de app opent.
+                Wijzigingen die je in de app maakt gaan direct mee. Pas je iets aan in de webapp,
+                dan wordt dat een paar seconden later opgepikt zolang de app open is, en anders
+                zodra je hem weer opent.
               </Text>
 
               <TouchableOpacity onPress={pushNow}

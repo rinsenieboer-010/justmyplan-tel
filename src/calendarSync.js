@@ -44,12 +44,27 @@ async function saveMap(userId, map) {
   try { await AsyncStorage.setItem(mapKey(userId), JSON.stringify(map)); } catch {}
 }
 
+// Een koppeling is { id, fp }: het toestel-id plus een vingerafdruk van de
+// afspraak zoals wij hem het laatst hebben weggeschreven. Met die vingerafdruk
+// kan reconcile zien wat écht veranderd is, in plaats van elke keer alles
+// opnieuw naar de agenda te duwen. Oudere installaties hebben alleen een string
+// opgeslagen; die lezen we hier stil om.
+function entryOf(v) {
+  if (!v) return null;
+  return typeof v === 'string' ? { id: v, fp: '' } : v;
+}
+
+function fingerprint(ev) {
+  return [ev.title || '', ev.date || '', ev.startH, ev.startM, ev.endH, ev.endM, ev.note || ''].join('|');
+}
+
 // Alle toestel-ids die wíj hebben aangemaakt. De importer slaat deze over, zodat
 // een afspraak die JMP naar de telefoon schreef niet even later als "nieuw"
 // weer naar binnen komt. Zonder deze rem krijg je een lus die bij elke import
 // duplicaten blijft opstapelen.
 export async function getOwnDeviceEventIds(userId) {
-  return new Set(Object.values(await getMap(userId)));
+  const map = await getMap(userId);
+  return new Set(Object.values(map).map(v => entryOf(v)?.id).filter(Boolean));
 }
 
 // ── Doelagenda kiezen ─────────────────────────────────────────────────────────
@@ -155,25 +170,35 @@ function toDeviceEvent(ev) {
 // Zet één afspraak op de telefoon. Bestaat hij daar al, dan werken we hem bij.
 // Is hij daar handmatig verwijderd, dan maken we hem opnieuw aan in plaats van
 // te struikelen over de ontbrekende id.
+// Interne variant die op een al geladen map werkt, zodat reconcile niet voor
+// elke afspraak opnieuw uit AsyncStorage leest.
+async function writeOne(calendarId, map, ev) {
+  const entry = entryOf(map[ev.id]);
+  const details = toDeviceEvent(ev);
+
+  if (entry) {
+    try {
+      await Calendar.updateEventAsync(entry.id, details);
+      map[ev.id] = { id: entry.id, fp: fingerprint(ev) };
+      return 'updated';
+    } catch {
+      // Handmatig verwijderd op het toestel: opnieuw aanmaken in plaats van
+      // struikelen over de id die er niet meer is.
+      delete map[ev.id];
+    }
+  }
+
+  const deviceId = await Calendar.createEventAsync(calendarId, details);
+  map[ev.id] = { id: deviceId, fp: fingerprint(ev) };
+  return 'created';
+}
+
 export async function pushEvent(userId, ev) {
   const cfg = await getSyncConfig(userId);
   if (!cfg.enabled || !cfg.calendarId || !ev?.id) return;
 
   const map = await getMap(userId);
-  const existingId = map[ev.id];
-  const details = toDeviceEvent(ev);
-
-  if (existingId) {
-    try {
-      await Calendar.updateEventAsync(existingId, details);
-      return;
-    } catch {
-      delete map[ev.id];
-    }
-  }
-
-  const deviceId = await Calendar.createEventAsync(cfg.calendarId, details);
-  map[ev.id] = deviceId;
+  await writeOne(cfg.calendarId, map, ev);
   await saveMap(userId, map);
 }
 
@@ -182,37 +207,58 @@ export async function removeEvent(userId, jmpEventId) {
   if (!cfg.enabled || !jmpEventId) return;
 
   const map = await getMap(userId);
-  const deviceId = map[jmpEventId];
-  if (!deviceId) return;
+  const entry = entryOf(map[jmpEventId]);
+  if (!entry) return;
 
-  try { await Calendar.deleteEventAsync(deviceId); } catch {}
+  try { await Calendar.deleteEventAsync(entry.id); } catch {}
   delete map[jmpEventId];
   await saveMap(userId, map);
 }
 
-// Alles in één keer wegschrijven, voor als je terugsync net aanzet of als de
-// telefoon een tijd niet is bijgewerkt. Geeft terug hoeveel er gelukt zijn.
-export async function pushAll(userId, events, onProgress) {
+// ── Gelijktrekken ─────────────────────────────────────────────────────────────
+// De volledige vergelijking tussen justmyplan en de agenda op dit toestel:
+// ontbrekende afspraken aanmaken, gewijzigde bijwerken, en afspraken die in
+// justmyplan niet meer bestaan ook echt van het toestel verwijderen.
+//
+// Dit is wat wijzigingen uit de webapp laat landen. Die komen via Supabase
+// binnen zonder ooit door addEvent/updateEvent hier op de telefoon te gaan, dus
+// zonder deze pas zou je ze nooit in Apple of Google Agenda zien.
+//
+// allowDeletes bestaat omdat loadEvents een lege lijst teruggeeft zowel bij
+// "geen afspraken" als bij een mislukte netwerkoproep. Zou je dat verschil
+// negeren, dan wist een haperende verbinding je hele agenda leeg. De aanroeper
+// zet de vlag alleen als hij zeker weet dat de data echt geladen is.
+export async function reconcile(userId, events, { allowDeletes = false, onProgress } = {}) {
   const cfg = await getSyncConfig(userId);
-  if (!cfg.enabled || !cfg.calendarId) return { pushed: 0, failed: 0 };
+  if (!cfg.enabled || !cfg.calendarId) return { created: 0, updated: 0, removed: 0, failed: 0 };
 
-  let pushed = 0, failed = 0;
-  for (const ev of events) {
-    try { await pushEvent(userId, ev); pushed++; }
-    catch { failed++; }
-    if (onProgress && (pushed + failed) % 5 === 0) onProgress(pushed + failed, events.length);
-  }
-  return { pushed, failed };
-}
-
-// Koppelingen opruimen voor afspraken die in JMP niet meer bestaan, zodat de
-// map niet eindeloos aangroeit.
-export async function pruneMap(userId, events) {
-  const alive = new Set(events.map(e => e.id));
   const map = await getMap(userId);
-  let changed = false;
-  for (const jmpId of Object.keys(map)) {
-    if (!alive.has(jmpId)) { delete map[jmpId]; changed = true; }
+  let created = 0, updated = 0, removed = 0, failed = 0, done = 0;
+
+  for (const ev of events) {
+    if (!ev?.id) continue;
+    const entry = entryOf(map[ev.id]);
+    // Onveranderd sinds de vorige keer: overslaan. Zo blijft deze pas goedkoop
+    // genoeg om bij elke app-opening te draaien.
+    if (entry && entry.fp === fingerprint(ev)) { done++; continue; }
+    try {
+      const what = await writeOne(cfg.calendarId, map, ev);
+      if (what === 'created') created++; else updated++;
+    } catch { failed++; }
+    done++;
+    if (onProgress && done % 5 === 0) onProgress(done, events.length);
   }
-  if (changed) await saveMap(userId, map);
+
+  if (allowDeletes) {
+    const alive = new Set(events.map(e => e.id));
+    for (const jmpId of Object.keys(map)) {
+      if (alive.has(jmpId)) continue;
+      const entry = entryOf(map[jmpId]);
+      if (entry) { try { await Calendar.deleteEventAsync(entry.id); removed++; } catch {} }
+      delete map[jmpId];
+    }
+  }
+
+  await saveMap(userId, map);
+  return { created, updated, removed, failed };
 }
