@@ -639,6 +639,26 @@ export default function TasksScreen() {
       return (PRIO_RANK[pa] ?? 3) - (PRIO_RANK[pb] ?? 3);
     });
 
+  // Handmatige volgorde uit de webapp aanhouden. Heb je daar gesleept of
+  // secties gemaakt, dan wint die volgorde hier ook, zodat je lijst op je
+  // telefoon niet anders staat dan op je laptop. Slepen zelf kan hier niet;
+  // taken die nog geen plek hebben staan automatisch gesorteerd bovenaan,
+  // precies zoals in de webapp.
+  const listSections = (!isSharedList && activeListObj?.sections) || [];
+  const isManual = !isSharedList
+    && (listSections.length > 0 || visibleTasks.some(x => x.sortOrder != null));
+  const rows = !isManual
+    ? visibleTasks.map(task => ({ kind: 'task', id: task.id, task }))
+    : [
+        ...visibleTasks.filter(x => x.sortOrder == null)
+          .map(task => ({ kind: 'task', id: task.id, task })),
+        ...[
+          ...visibleTasks.filter(x => x.sortOrder != null)
+            .map(task => ({ kind: 'task', id: task.id, task, key: task.sortOrder })),
+          ...listSections.map(sec => ({ kind: 'section', id: sec.id, section: sec, key: sec.sortOrder ?? 0 })),
+        ].sort((a, b) => a.key - b.key),
+      ];
+
   const submitInline = async () => {
     const title = newTitle.trim();
     if (!title) { setAddingInline(false); return; }
@@ -662,6 +682,19 @@ export default function TasksScreen() {
   const handleComplete = (task) => {
     if (task.isShared && task.permission !== 'edit') return;
     completeTask(task);
+  };
+
+  // Sectiekop: gekleurde balk, net als in de webapp. Op geel donkere tekst,
+  // want wit leest daar niet.
+  const SECTION_COLORS = ['#2563EB', '#DC2626', '#E6B400'];
+  const renderSection = (sec) => {
+    const bg = SECTION_COLORS.includes(sec.color) ? sec.color : SECTION_COLORS[0];
+    const fg = bg === '#E6B400' ? '#1d1d1f' : '#fff';
+    return (
+      <View style={[s.sectionHeader, { backgroundColor: bg }]}>
+        <Text style={[s.sectionHeaderText, { color: fg }]} numberOfLines={1}>{sec.title}</Text>
+      </View>
+    );
   };
 
   const renderTask = ({ item }) => {
@@ -707,6 +740,9 @@ export default function TasksScreen() {
       </TouchableOpacity>
     );
   };
+
+  const renderRow = ({ item }) =>
+    item.kind === 'section' ? renderSection(item.section) : renderTask({ item: item.task });
 
   return (
     <View style={s.container}>
@@ -757,9 +793,9 @@ export default function TasksScreen() {
 
       {/* Tasks */}
       <FlatList
-        data={visibleTasks}
-        keyExtractor={item => String(item.id)}
-        renderItem={renderTask}
+        data={rows}
+        keyExtractor={item => item.kind + ':' + String(item.id)}
+        renderItem={renderRow}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={s.list}
@@ -834,6 +870,8 @@ const s = StyleSheet.create({
   list:            { padding: 12, gap: 8 },
   listEmpty:       { flex: 1, justifyContent: 'center' },
   taskCard:        { backgroundColor: '#fff', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  sectionHeader:   { borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, marginTop: 6, justifyContent: 'center' },
+  sectionHeaderText: { fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
   taskLeft:        { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   taskInfo:        { flex: 1 },
   taskTitle:       { fontSize: 15, color: '#111827', fontWeight: '500', marginBottom: 4 },

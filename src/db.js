@@ -79,6 +79,10 @@ function dbToTask(r) {
     reminderTime: r.reminder_time || null,
     lastCompletedAt: r.last_completed_at || null,
     deletedAt: r.deleted_at || null,
+    // Handmatige plek binnen de lijst, gezet door te slepen in de webapp.
+    // NULL betekent automatisch sorteren. De app kan zelf niet slepen, maar
+    // houdt zich wel aan een volgorde die je op je laptop hebt gemaakt.
+    sortOrder: r.sort_order ?? null,
   };
 }
 
@@ -150,7 +154,14 @@ export async function loadLists(userId) {
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
-  return data && data.length > 0 ? data.map(dbToList) : null;
+  if (!data || data.length === 0) return null;
+  // Op handmatige volgorde, net als de webapp; lijsten zonder sort_order
+  // houden hun aanmaakvolgorde. Anders staan je lijsten op je telefoon in een
+  // andere volgorde dan op je laptop.
+  return data
+    .map((r, i) => ({ list: dbToList(r), key: r.sort_order ?? 100000 + i }))
+    .sort((a, b) => a.key - b.key)
+    .map(x => x.list);
 }
 
 export async function addListDB(userId, list) {
@@ -179,7 +190,12 @@ export async function deleteListDB(userId, id) {
 }
 
 function dbToList(r) {
-  return { id: r.id, label: r.label, color: r.color };
+  return {
+    id: r.id, label: r.label, color: r.color,
+    // Secties zijn de gekleurde tussenkopjes uit de webapp. Ze delen dezelfde
+    // schaal als tasks.sort_order, zodat kopjes en taken samen te ordenen zijn.
+    sections: Array.isArray(r.sections) ? r.sections : [],
+  };
 }
 
 // ── SHARE LISTS (granulair delen: welke lijsten een share omvat) ───────────────
