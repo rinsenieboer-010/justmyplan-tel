@@ -6,6 +6,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
+import SortableItem from '../components/SortableItem';
+import useSortableDrag from '../components/useSortableDrag';
+import NoteEditor from '../components/NoteEditor';
+import { taskRows, moveItem, orderChanges } from '../taskOrder';
 import { formatDeadline, getTodayKey, dateKey, MONTHS, MONTHS_SHORT, DAYS_SHORT, PRIO_COLOR, PRIO_BG, STATUS_COLOR, STATUS_BG, PERSON_COLORS } from '../utils';
 
 // ── CHECK CIRCLE ──────────────────────────────────────────────────────────────
@@ -28,20 +32,20 @@ function CheckCircle({ onComplete, disabled }) {
 
   return (
     <TouchableOpacity onPress={handlePress} style={tc.wrap} activeOpacity={0.7} disabled={disabled}>
-      <Ionicons name="ellipse-outline" size={22} color={pressed ? '#2563EB' : '#d1d5db'} />
+      <Ionicons name="ellipse-outline" size={30} color={pressed ? '#2563EB' : '#a1a1a6'} />
       <Animated.View style={[tc.fill, {
         opacity: fill,
         transform: [{ scale: fill.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }],
       }]}>
-        <Ionicons name="checkmark-circle" size={22} color="#2563EB" />
+        <Ionicons name="checkmark-circle" size={30} color="#2563EB" />
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
 const tc = StyleSheet.create({
-  wrap: { padding: 2, justifyContent: 'center', alignItems: 'center' },
-  fill: { position: 'absolute', top: 2, left: 2 },
+  wrap: { width: 48, height: 48, justifyContent: 'center', alignItems: 'center' },
+  fill: { position: 'absolute', top: 9, left: 9 },
 });
 
 // ── DATE PICKER ───────────────────────────────────────────────────────────────
@@ -59,13 +63,15 @@ function recurrenceLabel(recurrence) {
 }
 
 function DatePickerModal({ value, recurrence, onSelect, onRecurrenceSelect, onClose }) {
-  const initial = value ? new Date(value + 'T12:00:00') : new Date();
+  const initial = new Date();
   const [viewYear, setViewYear]   = useState(initial.getFullYear());
   const [viewMonth, setViewMonth] = useState(initial.getMonth());
   const customMatch = recurrence?.match(/^custom:(\d+):(days|weeks|months)$/);
   const [customOpen, setCustomOpen] = useState(recurrence === 'biweekly' || Boolean(customMatch));
   const [customInterval, setCustomInterval] = useState(customMatch ? Number(customMatch[1]) : 2);
   const [customUnit, setCustomUnit] = useState(customMatch?.[2] || 'weeks');
+  const [draftDate, setDraftDate] = useState(value);
+  const [draftRecurrence, setDraftRecurrence] = useState(recurrence);
 
   const daysInMonth = (y, m) => new Date(y, m + 1, 0).getDate();
   const firstDay    = (y, m) => { const d = new Date(y, m, 1).getDay(); return d === 0 ? 6 : d - 1; };
@@ -81,7 +87,7 @@ function DatePickerModal({ value, recurrence, onSelect, onRecurrenceSelect, onCl
   const todayK = getTodayKey();
 
   return (
-    <Modal transparent animationType="fade" onRequestClose={onClose}>
+    <View style={StyleSheet.absoluteFill} accessibilityViewIsModal>
       <TouchableOpacity style={dp.overlay} activeOpacity={1} onPress={onClose}>
         <TouchableOpacity style={dp.picker} activeOpacity={1}>
           {/* Header */}
@@ -105,12 +111,14 @@ function DatePickerModal({ value, recurrence, onSelect, onRecurrenceSelect, onCl
             {cells.map((day, i) => {
               if (!day) return <View key={i} style={dp.cell} />;
               const key = viewYear + '-' + String(viewMonth + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0');
-              const isSelected = key === value;
+              const isSelected = key === draftDate;
               const isToday    = key === todayK;
               return (
-                <TouchableOpacity key={i} style={[dp.cell, isSelected && dp.cellSelected, isToday && !isSelected && dp.cellToday]}
-                  onPress={() => { onSelect(key); onClose(); }}>
-                  <Text style={[dp.cellText, isSelected && dp.cellTextSelected, isToday && !isSelected && dp.cellTextToday]}>{day}</Text>
+                <TouchableOpacity key={i} style={dp.cell}
+                  onPress={() => setDraftDate(key)}>
+                  <View style={[dp.daySquare, isSelected && dp.cellSelected, isToday && !isSelected && dp.cellToday]}>
+                    <Text style={[dp.cellText, isSelected && dp.cellTextSelected, isToday && !isSelected && dp.cellTextToday]}>{day}</Text>
+                  </View>
                 </TouchableOpacity>
               );
             })}
@@ -125,9 +133,9 @@ function DatePickerModal({ value, recurrence, onSelect, onRecurrenceSelect, onCl
                 ['monthly', 'Maandelijks'],
               ].map(([key, label]) => (
                 <TouchableOpacity key={key}
-                  style={[dp.repeatBtn, !customOpen && recurrence === key && dp.repeatBtnActive]}
-                  onPress={() => { onRecurrenceSelect(key); onClose(); }}>
-                  <Text style={[dp.repeatBtnText, !customOpen && recurrence === key && dp.repeatBtnTextActive]}>{label}</Text>
+                  style={[dp.repeatBtn, !customOpen && draftRecurrence === key && dp.repeatBtnActive]}
+                  onPress={() => { setDraftRecurrence(key); setCustomOpen(false); }}>
+                  <Text style={[dp.repeatBtnText, !customOpen && draftRecurrence === key && dp.repeatBtnTextActive]}>{label}</Text>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity style={[dp.repeatBtn, customOpen && dp.repeatBtnActive]} onPress={() => setCustomOpen(true)}>
@@ -154,71 +162,75 @@ function DatePickerModal({ value, recurrence, onSelect, onRecurrenceSelect, onCl
                     </TouchableOpacity>
                   ))}
                 </View>
-                <TouchableOpacity style={dp.customSaveBtn}
-                  onPress={() => { onRecurrenceSelect(`custom:${customInterval}:${customUnit}`); onClose(); }}>
-                  <Text style={dp.customSaveText}>Opslaan</Text>
-                </TouchableOpacity>
               </View>
             )}
 
-            {recurrence && (
-              <TouchableOpacity onPress={() => { onRecurrenceSelect(null); onClose(); }}>
+            {(draftRecurrence || customOpen) && (
+              <TouchableOpacity onPress={() => { setDraftRecurrence(null); setCustomOpen(false); }}>
                 <Text style={dp.noRepeatText}>Geen herhaling</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {/* Clear */}
-          <TouchableOpacity style={dp.clearBtn} onPress={() => { onSelect(null); onClose(); }}>
+          <TouchableOpacity style={dp.clearBtn} onPress={() => setDraftDate(null)}>
             <Text style={dp.clearText}>Datum wissen</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={dp.customSaveBtn} onPress={() => {
+            onSelect(draftDate);
+            onRecurrenceSelect(customOpen ? `custom:${customInterval}:${customUnit}` : draftRecurrence);
+            onClose();
+          }}>
+            <Text style={dp.customSaveText}>Opslaan</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </TouchableOpacity>
-    </Modal>
+    </View>
   );
 }
 
 const dp = StyleSheet.create({
   overlay:           { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
   picker:            { backgroundColor: '#fff', borderRadius: 12, width: 280, overflow: 'hidden' },
-  header:            { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
+  header:            { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f7' },
   navBtn:            { padding: 4, width: 32, alignItems: 'center' },
-  navArrow:          { fontSize: 20, color: '#374151' },
-  monthLabel:        { flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: '#111827' },
+  navArrow:          { fontSize: 20, color: '#424245' },
+  monthLabel:        { flex: 1, textAlign: 'center', fontSize: 14, fontWeight: '700', color: '#1d1d1f' },
   dayHeaderRow:      { flexDirection: 'row', paddingHorizontal: 8, paddingVertical: 6 },
-  dayHeader:         { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#9ca3af' },
-  grid:              { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, paddingBottom: 8 },
-  cell:              { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', borderRadius: 4 },
+  dayHeader:         { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#86868b' },
+  grid:              { flexDirection: 'row', flexWrap: 'wrap', flexShrink: 0, paddingHorizontal: 8, paddingBottom: 8 },
+  cell:              { width: '14.28%', height: 40, flexShrink: 0, justifyContent: 'center', alignItems: 'center' },
+  daySquare:         { width: 34, height: 34, justifyContent: 'center', alignItems: 'center', borderRadius: 4 },
   cellSelected:      { backgroundColor: '#2563EB' },
   cellToday:         { backgroundColor: '#DBEAFE' },
-  cellText:          { fontSize: 13, color: '#111827' },
+  cellText:          { fontSize: 13, lineHeight: 20, textAlign: 'center', includeFontPadding: false, color: '#1d1d1f' },
   cellTextSelected:  { color: '#fff', fontWeight: '700' },
   cellTextToday:     { color: '#2563EB', fontWeight: '700' },
-  repeatSection:     { borderTopWidth: 1, borderTopColor: '#f3f4f6', padding: 10 },
-  repeatLabel:       { fontSize: 10, fontWeight: '700', color: '#9ca3af', letterSpacing: 0.8, marginBottom: 6 },
+  repeatSection:     { borderTopWidth: 1, borderTopColor: '#f5f5f7', padding: 10 },
+  repeatLabel:       { fontSize: 10, fontWeight: '700', color: '#86868b', letterSpacing: 0.8, marginBottom: 6 },
   repeatGrid:        { flexDirection: 'row', flexWrap: 'wrap', gap: 5 },
-  repeatBtn:         { width: '49%', backgroundColor: '#f3f4f6', borderRadius: 5, paddingVertical: 7, alignItems: 'center' },
+  repeatBtn:         { width: '49%', backgroundColor: '#f5f5f7', borderRadius: 5, paddingVertical: 7, alignItems: 'center' },
   repeatBtnActive:   { backgroundColor: '#DBEAFE' },
-  repeatBtnText:     { fontSize: 11, fontWeight: '700', color: '#6b7280' },
+  repeatBtnText:     { fontSize: 11, fontWeight: '700', color: '#6e6e73' },
   repeatBtnTextActive:{ color: '#2563EB' },
   customBox:         { marginTop: 8 },
-  customPrefix:      { fontSize: 11, color: '#6b7280', marginBottom: 5 },
+  customPrefix:      { fontSize: 11, color: '#6e6e73', marginBottom: 5 },
   intervalScroll:    { marginBottom: 6 },
   intervalRow:       { flexDirection: 'row', gap: 4 },
-  intervalBtn:       { width: 28, height: 28, borderRadius: 5, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center' },
+  intervalBtn:       { width: 28, height: 28, borderRadius: 5, backgroundColor: '#f5f5f7', alignItems: 'center', justifyContent: 'center' },
   intervalBtnActive: { backgroundColor: '#DBEAFE' },
-  intervalText:      { fontSize: 11, color: '#6b7280', fontWeight: '600' },
+  intervalText:      { fontSize: 11, color: '#6e6e73', fontWeight: '600' },
   intervalTextActive:{ color: '#2563EB' },
   unitRow:           { flexDirection: 'row', gap: 5 },
-  unitBtn:           { flex: 1, backgroundColor: '#f3f4f6', borderRadius: 5, paddingVertical: 6, alignItems: 'center' },
+  unitBtn:           { flex: 1, backgroundColor: '#f5f5f7', borderRadius: 5, paddingVertical: 6, alignItems: 'center' },
   unitBtnActive:     { backgroundColor: '#DBEAFE' },
-  unitText:          { fontSize: 11, color: '#6b7280', fontWeight: '600' },
+  unitText:          { fontSize: 11, color: '#6e6e73', fontWeight: '600' },
   unitTextActive:    { color: '#2563EB' },
-  customSaveBtn:     { alignSelf: 'flex-start', marginTop: 8, backgroundColor: '#2563EB', borderRadius: 4, paddingHorizontal: 12, paddingVertical: 6 },
+  customSaveBtn:     { alignSelf: 'center', marginTop: 8, marginBottom: 16, backgroundColor: '#2563EB', borderRadius: 6, paddingHorizontal: 18, paddingVertical: 10 },
   customSaveText:    { color: '#fff', fontSize: 11, fontWeight: '700' },
-  noRepeatText:      { marginTop: 7, fontSize: 11, color: '#9ca3af' },
-  clearBtn:          { padding: 12, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
-  clearText:         { fontSize: 12, color: '#9ca3af', textAlign: 'center' },
+  noRepeatText:      { marginTop: 7, fontSize: 11, color: '#86868b' },
+  clearBtn:          { padding: 12, borderTopWidth: 1, borderTopColor: '#f5f5f7' },
+  clearText:         { fontSize: 12, color: '#86868b', textAlign: 'center' },
 });
 
 // ── REMINDER TIME PICKER (uur/minuut, minuten in stappen van 5) ───────────────
@@ -231,8 +243,8 @@ function ReminderTimeRow({ value, onChange }) {
   if (h === null) {
     return (
       <TouchableOpacity style={tm.dateBtn} onPress={() => set(9, 0)}>
-        <Ionicons name="alarm-outline" size={16} color="#6b7280" />
-        <Text style={[tm.dateBtnText, { color: '#9ca3af' }]}>Geen herinnering</Text>
+        <Ionicons name="alarm-outline" size={16} color="#6e6e73" />
+        <Text style={[tm.dateBtnText, { color: '#86868b' }]}>Geen herinnering</Text>
       </TouchableOpacity>
     );
   }
@@ -251,68 +263,86 @@ function ReminderTimeRow({ value, onChange }) {
         </View>
       </View>
       <TouchableOpacity onPress={() => onChange(null)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Ionicons name="close-circle" size={18} color="#9ca3af" />
+        <Ionicons name="close-circle" size={18} color="#86868b" />
       </TouchableOpacity>
     </View>
   );
 }
 
 // ── TASK MODAL ────────────────────────────────────────────────────────────────
-function TaskModal({ task, lists, onSave, onDelete, onClose }) {
+function TaskModal({ task, lists, initialList = 'mine', onSave, onDelete, onClose }) {
   const [title,    setTitle]    = useState(task?.title || '');
   const [deadline, setDeadline] = useState(task?.deadline || null);
   const [reminderTime, setReminderTime] = useState(task?.reminderTime || null);
   const [recurrence, setRecurrence] = useState(task?.recurrence || null);
   const [priority, setPriority] = useState(task?.priority || '');
   const [note,     setNote]     = useState(task?.note || '');
-  const [list,     setList]     = useState(task?.list || 'mine');
+  const [list,     setList]     = useState(task?.list || initialList);
+  const [listPickerOpen, setListPickerOpen] = useState(false);
+  const [noteEditorOpen, setNoteEditorOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const status = task?.status || ''; // status-veld blijft bestaan maar wordt niet meer getoond
 
-  const save = () => {
+  const save = async () => {
+    if (saveLock.current) return;
     if (!title.trim()) { Alert.alert('Voer een titel in'); return; }
-    onSave({ ...(task || {}), title: title.trim(), deadline, reminderTime, recurrence, priority, status, note, list });
+    saveLock.current = true;
+    setSaving(true);
+    try {
+      await onSave({ ...(task || {}), title: title.trim(), note, deadline, reminderTime, recurrence, priority, status, list });
+    } catch { Alert.alert('Niet opgeslagen', 'Opslaan is niet gelukt. Je tekst staat nog in dit venster. Probeer het opnieuw.'); }
+    finally { saveLock.current = false; setSaving(false); }
   };
 
   const PRIOS   = [['', '—'], ['laag', 'Laag'], ['midden', 'Midden'], ['hoog', 'Hoog']];
 
   return (
-    <Modal animationType="slide" transparent onRequestClose={onClose}>
+    <Modal animationType="slide" transparent onRequestClose={() => {
+      if (saving) return;
+      if (noteEditorOpen) setNoteEditorOpen(false);
+      else if (datePickerOpen) setDatePickerOpen(false);
+      else onClose();
+    }}>
       <KeyboardAvoidingView style={tm.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => !saving && onClose()} />
         <View style={tm.sheet}>
           <View style={tm.handle} />
           <Text style={tm.sheetTitle}>{task ? 'Taak bewerken' : 'Taak toevoegen'}</Text>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" pointerEvents={saving ? 'none' : 'auto'}>
             <TextInput
               style={tm.titleInput}
               placeholder="Taaknaam..."
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#86868b"
               value={title}
               onChangeText={setTitle}
               autoFocus={!task}
+              multiline
+              editable={!saving}
             />
 
             {/* List */}
-            <Text style={tm.label}>Lijst</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }}>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                {lists.map(l => (
-                  <TouchableOpacity key={l.id} style={[tm.chip, list === l.id && { backgroundColor: l.color, borderColor: l.color }]}
-                    onPress={() => setList(l.id)}>
-                    <Text style={[tm.chipText, list === l.id && { color: '#fff' }]}>{l.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+            <TouchableOpacity disabled={saving} style={tm.dateBtn} onPress={() => setListPickerOpen(open => !open)}
+              accessibilityRole="button" accessibilityState={{ expanded: listPickerOpen }}>
+              <Text style={[tm.dateBtnText, { flex: 1 }]} numberOfLines={1}>Van lijst wisselen: {lists.find(l => l.id === list)?.label || 'Mijn taken'}</Text>
+              <Ionicons name={listPickerOpen ? 'chevron-up' : 'chevron-down'} size={16} color="#6e6e73" />
+            </TouchableOpacity>
+            {listPickerOpen && <View style={{ borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 8, marginBottom: 14 }}>
+              {lists.map(l => <TouchableOpacity key={l.id} disabled={saving} style={{ padding: 12, flexDirection: 'row', gap: 8 }}
+                onPress={() => { setList(l.id); setListPickerOpen(false); }}>
+                <Text style={{ flex: 1, color: '#1d1d1f' }}>{l.label}</Text>
+                {l.id === list && <Ionicons name="checkmark" size={18} color="#2563EB" />}
+              </TouchableOpacity>)}
+            </View>}
 
             {/* Date */}
             <Text style={tm.label}>Datum</Text>
             <TouchableOpacity style={tm.dateBtn} onPress={() => setDatePickerOpen(true)}>
-              <Ionicons name="calendar-outline" size={16} color="#6b7280" />
+              <Ionicons name="calendar-outline" size={16} color="#6e6e73" />
               <View style={{ flex: 1 }}>
-                <Text style={[tm.dateBtnText, !deadline && { color: '#9ca3af' }]}>
+                <Text style={[tm.dateBtnText, !deadline && { color: '#86868b' }]}>
                   {deadline ? formatDeadline(deadline) + ' (' + deadline + ')' : 'Geen datum'}
                 </Text>
                 {recurrence && <Text style={tm.recurrenceText}>{recurrenceLabel(recurrence)}</Text>}
@@ -336,22 +366,16 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
 
             {/* Note */}
             <Text style={tm.label}>Notitie</Text>
-            <TextInput
-              style={tm.noteInput}
-              placeholder="Voeg een notitie toe..."
-              placeholderTextColor="#9ca3af"
-              value={note}
-              onChangeText={setNote}
-              multiline
-              numberOfLines={3}
-            />
+            <TouchableOpacity disabled={saving} style={tm.noteInput} onPress={() => setNoteEditorOpen(true)}>
+              <Text style={{ color: note ? '#1d1d1f' : '#86868b', fontSize: 14 }} numberOfLines={3}>{note || 'Voeg een notitie toe...'}</Text>
+            </TouchableOpacity>
 
             {/* Buttons */}
-            <TouchableOpacity style={tm.saveBtn} onPress={save}>
-              <Text style={tm.saveBtnText}>{task ? 'Opslaan' : 'Toevoegen'}</Text>
+            <TouchableOpacity style={tm.saveBtn} disabled={saving} onPress={save}>
+              <Text style={tm.saveBtnText}>{saving ? 'Opslaan...' : task ? 'Opslaan' : 'Toevoegen'}</Text>
             </TouchableOpacity>
             {task && (
-              <TouchableOpacity style={tm.deleteBtn} onPress={() => { onDelete(task.id); onClose(); }}>
+              <TouchableOpacity disabled={saving} style={tm.deleteBtn} onPress={() => { onDelete(task.id); onClose(); }}>
                 <Text style={tm.deleteBtnText}>Verwijderen</Text>
               </TouchableOpacity>
             )}
@@ -359,6 +383,7 @@ function TaskModal({ task, lists, onSave, onDelete, onClose }) {
         </View>
       </KeyboardAvoidingView>
 
+      {noteEditorOpen && <NoteEditor value={note} onChange={setNote} onClose={() => setNoteEditorOpen(false)} />}
       {datePickerOpen && (
         <DatePickerModal
           value={deadline}
@@ -376,19 +401,19 @@ const tm = StyleSheet.create({
   overlay:    { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet:      { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, maxHeight: '85%' },
   handle:     { width: 36, height: 4, backgroundColor: '#d1d5db', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 16 },
-  titleInput: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, fontSize: 16, color: '#111827', marginBottom: 16 },
-  label:      { fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sheetTitle: { fontSize: 18, fontWeight: '700', color: '#1d1d1f', marginBottom: 16 },
+  titleInput: { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 8, padding: 12, fontSize: 16, color: '#1d1d1f', marginBottom: 16 },
+  label:      { fontSize: 12, fontWeight: '600', color: '#6e6e73', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   chipRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
-  chip:       { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  chipText:   { fontSize: 13, color: '#374151' },
-  dateBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, marginBottom: 14 },
-  dateBtnText:{ fontSize: 14, color: '#374151' },
+  chip:       { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  chipText:   { fontSize: 13, color: '#424245' },
+  dateBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 8, padding: 10, marginBottom: 14 },
+  dateBtnText:{ fontSize: 14, color: '#424245' },
   recurrenceText:{ fontSize: 11, color: '#2563EB', fontWeight: '600', marginTop: 2 },
-  timeBtn:    { width: 26, height: 26, borderRadius: 5, backgroundColor: '#f3f4f6', justifyContent: 'center', alignItems: 'center' },
-  timeBtnText:{ fontSize: 15, color: '#374151', fontWeight: '700' },
-  timeValue:  { fontSize: 15, fontWeight: '700', color: '#111827', minWidth: 24, textAlign: 'center' },
-  noteInput:  { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, fontSize: 14, color: '#111827', marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
+  timeBtn:    { width: 26, height: 26, borderRadius: 5, backgroundColor: '#f5f5f7', justifyContent: 'center', alignItems: 'center' },
+  timeBtnText:{ fontSize: 15, color: '#424245', fontWeight: '700' },
+  timeValue:  { fontSize: 15, fontWeight: '700', color: '#1d1d1f', minWidth: 24, textAlign: 'center' },
+  noteInput:  { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 8, padding: 10, fontSize: 14, color: '#1d1d1f', marginBottom: 16, minHeight: 80, textAlignVertical: 'top' },
   saveBtn:    { backgroundColor: '#2563EB', borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginBottom: 10 },
   saveBtnText:{ color: '#fff', fontSize: 15, fontWeight: '700' },
   deleteBtn:  { backgroundColor: '#FEE2E2', borderRadius: 8, paddingVertical: 13, alignItems: 'center' },
@@ -413,7 +438,7 @@ function ListModal({ onSave, onClose }) {
           <TextInput
             style={lm.input}
             placeholder="Lijstnaam..."
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor="#86868b"
             value={label}
             onChangeText={setLabel}
             autoFocus
@@ -438,12 +463,12 @@ const lm = StyleSheet.create({
   overlay:        { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet:          { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24 },
   handle:         { width: 36, height: 4, backgroundColor: '#d1d5db', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  title:          { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 16 },
-  input:          { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, fontSize: 16, color: '#111827', marginBottom: 16 },
-  label:          { fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
+  title:          { fontSize: 18, fontWeight: '700', color: '#1d1d1f', marginBottom: 16 },
+  input:          { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 8, padding: 12, fontSize: 16, color: '#1d1d1f', marginBottom: 16 },
+  label:          { fontSize: 12, fontWeight: '600', color: '#6e6e73', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   colorRow:       { flexDirection: 'row', gap: 12, marginBottom: 20 },
   colorDot:       { width: 28, height: 28, borderRadius: 14 },
-  colorDotActive: { borderWidth: 3, borderColor: '#111827' },
+  colorDotActive: { borderWidth: 3, borderColor: '#1d1d1f' },
   saveBtn:        { backgroundColor: '#2563EB', borderRadius: 8, paddingVertical: 13, alignItems: 'center' },
   saveBtnText:    { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
@@ -484,7 +509,7 @@ function TrashModal({ onClose }) {
           <View style={tr.headerRow}>
             <Text style={tr.title}>Voltooid & verwijderd</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="close" size={22} color="#9ca3af" />
+              <Ionicons name="close" size={22} color="#86868b" />
             </TouchableOpacity>
           </View>
 
@@ -492,7 +517,7 @@ function TrashModal({ onClose }) {
             <View style={tr.empty}><Text style={tr.emptyText}>Laden...</Text></View>
           ) : items.length === 0 ? (
             <View style={tr.empty}>
-              <Ionicons name="checkmark-done-outline" size={36} color="#e5e7eb" />
+              <Ionicons name="checkmark-done-outline" size={36} color="#e5e5ea" />
               <Text style={tr.emptyText}>Niets in de prullenbak</Text>
             </View>
           ) : (
@@ -525,20 +550,39 @@ const tr = StyleSheet.create({
   sheet:      { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, maxHeight: '85%' },
   handle:     { width: 36, height: 4, backgroundColor: '#d1d5db', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   headerRow:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  title:      { fontSize: 18, fontWeight: '700', color: '#111827' },
+  title:      { fontSize: 18, fontWeight: '700', color: '#1d1d1f' },
   empty:      { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 48 },
-  emptyText:  { fontSize: 14, color: '#9ca3af' },
-  row:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' },
-  rowTitle:   { fontSize: 15, color: '#374151', fontWeight: '500' },
-  rowMeta:    { fontSize: 11, color: '#9ca3af', marginTop: 2 },
+  emptyText:  { fontSize: 14, color: '#86868b' },
+  row:        { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f5f5f7' },
+  rowTitle:   { fontSize: 15, color: '#424245', fontWeight: '500' },
+  rowMeta:    { fontSize: 11, color: '#86868b', marginTop: 2 },
   restoreBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#DBEAFE', borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
   restoreText:{ fontSize: 12, color: '#2563EB', fontWeight: '700' },
   purgeBtn:   { padding: 6 },
 });
 
 // ── TASKS SCREEN ──────────────────────────────────────────────────────────────
+function SortableCell({ children, style, item, onLayout, onFocusCapture }) {
+  return <View onLayout={onLayout} onFocusCapture={onFocusCapture}
+    style={[style, { zIndex: item.dragging ? 20 : 0 }]}>{children}</View>;
+}
+
 export default function TasksScreen() {
-  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled, isSharedVisible } = useData();
+  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled, isSharedVisible, reorderLists, saveTaskOrder, ordering } = useData();
+  const [dragging, setDragging] = useState(false);
+  const taskListRef = useRef(null);
+  const taskViewportRef = useRef(null);
+  const tabsRef = useRef(null);
+  const tabsViewportRef = useRef(null);
+  const [focusTaskId, setFocusTaskId] = useState(null);
+  const focusTarget = useRef(null);
+  const focusTimer = useRef(null);
+  const rowSizes = useRef({});
+  const tabSizes = useRef({});
+  const [sectionDraft, setSectionDraft] = useState(null);
+  const [sectionSaving, setSectionSaving] = useState(false);
+  const onDragging = (value) => { setDragging(value); setPagerEnabled(!value); };
+  const reportOrderError = () => Alert.alert('Niet volledig opgeslagen', 'De indeling kon niet volledig worden opgeslagen. Controleer je verbinding en probeer het opnieuw.');
   // Gedeelde lijsten die de ontvanger heeft verborgen niet als tab tonen
   const visibleLists = lists.filter(l => !l.isShared || isSharedVisible(l.id));
   // Gedeelde lijsten tonen in de kleur van de persoon (zo zie je meteen van wie)
@@ -558,7 +602,7 @@ export default function TasksScreen() {
   const commitRename = (l) => {
     const label = editLabel.trim();
     setEditingListId(null);
-    if (label && label !== l.label) updateList({ ...l, label });
+    if (label && label !== l.label) updateList({ ...l, label }).catch(reportOrderError);
   };
   const [addingInline, setAddingInline] = useState(false);
   const [newTitle, setNewTitle]         = useState('');
@@ -569,7 +613,6 @@ export default function TasksScreen() {
   const [frozenPrio, setFrozenPrio]     = useState({});
   const prioTimers = useRef({});
   const PRIO_NEXT = { '': 'hoog', hoog: 'midden', midden: 'laag', laag: '' };
-  const PRIO_RANK = { hoog: 0, midden: 1, laag: 2, '': 3 };
 
   const cyclePrio = (task) => {
     if (task.isShared) return; // prioriteit beheer je op je eigen taken
@@ -599,9 +642,11 @@ export default function TasksScreen() {
 
   const handleAddList = async (label, color) => {
     const newList = { id: 'list_' + Date.now(), label, color };
-    await addList(newList); // seedt meteen álle eigen lijsten in de DB
-    setActiveList(newList.id);
-    setShowListModal(false);
+    try {
+      await addList(newList);
+      setActiveList(newList.id);
+      setShowListModal(false);
+    } catch { reportOrderError(); }
   };
 
   const handleDeleteList = () => {
@@ -614,30 +659,40 @@ export default function TasksScreen() {
     ]);
   };
 
-  // Drie groepen, in deze volgorde:
-  //   0 — taken met een datum die nu spelen (vroegste boven)
-  //   1 — taken zonder datum
-  //   2 — herhalende taken die pas later weer aan de beurt zijn
-  // Een herhalende taak zakt dus onder de datumloze taken zolang hij nog niet
-  // speelt, en springt omhoog vanaf de dag ervoor. Binnen elke groep op
-  // prioriteit (hoog → midden → laag → geen).
-  const nowDate = new Date();
-  const tomorrowKey = dateKey(new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 1));
-  const sortGroup = (task) => {
-    if (!task.deadline) return 1;
-    if (task.recurrence && task.deadline > tomorrowKey) return 2;
-    return 0;
+  const visibleTasks = tasks.filter(t => (t.list || 'mine') === activeList);
+  const sections = isSharedList ? [] : activeListObj?.sections || [];
+  const rows = taskRows(isSharedList ? visibleTasks.map(t => ({ ...t, sortOrder: null })) : visibleTasks, sections, frozenPrio);
+  const rowIds = rows.map(r => r.id);
+  const ownLists = visibleLists.filter(l => !l.isShared);
+  const moveRow = (id, to) => saveTaskOrder(activeList, orderChanges(moveItem(rows, id, to))).catch(reportOrderError);
+  const moveTab = (id, to) => reorderLists(moveItem(ownLists, id, to)).catch(reportOrderError);
+  const rowDrag = useSortableDrag({ ids: rowIds, sizes: rowSizes.current, scrollRef: taskListRef,
+    viewportRef: taskViewportRef, onMove: moveRow, onDragging });
+  const tabDrag = useSortableDrag({ ids: ownLists.map(l => l.id), sizes: tabSizes.current, scrollRef: tabsRef,
+    viewportRef: tabsViewportRef, horizontal: true, onMove: moveTab, onDragging });
+  useEffect(() => {
+    if (!focusTaskId) return;
+    const index = rows.findIndex(row => row.id === focusTaskId);
+    if (index < 0) return;
+    focusTarget.current = { index, attempts: 0 };
+    clearTimeout(focusTimer.current);
+    focusTimer.current = setTimeout(() => taskListRef.current?.scrollToIndex({ index, viewPosition: 0.4, animated: true }), 250);
+    setFocusTaskId(null);
+  }, [focusTaskId, activeList, tasks]);
+  useEffect(() => () => clearTimeout(focusTimer.current), []);
+  const saveSection = async (remove = false) => {
+    if (sectionSaving || (!remove && !sectionDraft.title.trim())) return;
+    setSectionSaving(true);
+    const section = { ...sectionDraft, title: sectionDraft.title.trim() };
+    let next = rows.filter(r => !remove || r.id !== section.id);
+    if (!remove) next = next.some(r => r.id === section.id)
+      ? next.map(r => r.id === section.id ? { ...r, section } : r)
+      : [...next, { kind: 'section', id: section.id, section }];
+    try {
+      await saveTaskOrder(activeList, orderChanges(next));
+      setSectionDraft(null);
+    } catch { reportOrderError(); } finally { setSectionSaving(false); }
   };
-  const visibleTasks = tasks
-    .filter(t => (t.list || 'mine') === activeList)
-    .sort((a, b) => {
-      const ga = sortGroup(a), gb = sortGroup(b);
-      if (ga !== gb) return ga - gb;
-      if (a.deadline && b.deadline && a.deadline !== b.deadline) return a.deadline < b.deadline ? -1 : 1;
-      const pa = frozenPrio[a.id] !== undefined ? frozenPrio[a.id] : (a.priority || '');
-      const pb = frozenPrio[b.id] !== undefined ? frozenPrio[b.id] : (b.priority || '');
-      return (PRIO_RANK[pa] ?? 3) - (PRIO_RANK[pb] ?? 3);
-    });
 
   const submitInline = async () => {
     const title = newTitle.trim();
@@ -648,13 +703,17 @@ export default function TasksScreen() {
   };
 
   const handleSave = async (taskData) => {
+    const destination = lists.find(l => l.id === taskData.list);
+    let saved;
     if (taskData.id) {
       await updateTask(taskData);
+      saved = taskData;
     } else {
-      const ownerId = isSharedList ? activeListObj.ownerId : null;
-      await addTask({ ...taskData, list: activeList }, ownerId);
+      saved = await addTask(taskData, destination?.isShared ? destination.ownerId : null);
     }
     setModalTask(undefined);
+    setActiveList(taskData.list);
+    setFocusTaskId(saved.id);
   };
 
   // Eén tik op het bolletje voltooit de taak meteen (geen bevestiging). De taak
@@ -670,9 +729,10 @@ export default function TasksScreen() {
     const canPrio = !item.isShared;
     const dispPrio = prioOverride[item.id] ?? item.priority ?? '';
     return (
-      <TouchableOpacity style={s.taskCard} onPress={() => (!item.isShared || item.permission === 'edit') ? setModalTask(item) : null} onLongPress={() => handleComplete(item)}>
+      <TouchableOpacity style={s.taskCard} onPress={() => (!item.isShared || item.permission === 'edit') ? setModalTask(item) : null}>
         <View style={s.taskLeft}>
           <CheckCircle
+            key={`${item.id}:${item.lastCompletedAt || ''}`}
             onComplete={() => handleComplete(item)}
             disabled={item.isShared && item.permission !== 'edit'}
           />
@@ -680,8 +740,9 @@ export default function TasksScreen() {
             <Text style={s.taskTitle} numberOfLines={1}>{item.title}</Text>
             <View style={s.taskBadges}>
               {item.deadline && (
-                <View style={[s.badge, { backgroundColor: isPast ? '#FEE2E2' : isToday ? '#DBEAFE' : '#f3f4f6' }]}>
-                  <Text style={[s.badgeText, { color: isPast ? '#DC2626' : isToday ? '#1d4ed8' : '#6b7280' }]}>{formatDeadline(item.deadline)}</Text>
+                <View style={[s.badge, { minWidth: item.recurrence ? 100 : undefined, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: isPast ? '#FEE2E2' : isToday ? '#DBEAFE' : '#f5f5f7' }]}>
+                  <Text style={[s.badgeText, { flex: item.recurrence ? 1 : undefined, color: isPast ? '#DC2626' : isToday ? '#1d4ed8' : '#6e6e73' }]}>{formatDeadline(item.deadline)}</Text>
+                  {item.recurrence && <Ionicons name="repeat-outline" size={13} color="#6e6e73" accessibilityLabel="Herhalende taak" />}
                 </View>
               )}
               {item.reminderTime && (
@@ -711,14 +772,18 @@ export default function TasksScreen() {
   return (
     <View style={s.container}>
       {/* List tabs */}
-      <View style={{ flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e7eb', alignItems: 'center' }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" style={{ flex: 1 }} contentContainerStyle={s.listTabsContent}
+      <View style={{ flexDirection: 'row', backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#e5e5ea', alignItems: 'center' }}>
+        <View ref={tabsViewportRef} collapsable={false} style={{ flex: 1 }}>
+        <ScrollView ref={tabsRef} horizontal scrollEnabled={!dragging} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={s.listTabsContent}
+          onScroll={tabDrag.onScroll} onContentSizeChange={tabDrag.onContentSizeChange} scrollEventThrottle={16}
           onTouchStart={() => setPagerEnabled(false)}
           onTouchEnd={() => setPagerEnabled(true)}
           onTouchCancel={() => setPagerEnabled(true)}
           onScrollEndDrag={() => setPagerEnabled(true)}
           onMomentumScrollEnd={() => setPagerEnabled(true)}>
           {visibleLists.map(l => (
+            <SortableItem key={l.id} id={l.id} ids={ownLists.map(x => x.id)} sizes={tabSizes.current}
+              horizontal disabled={l.isShared || ordering || editingListId === l.id} label={l.label} onMove={moveTab} drag={tabDrag}>
             <TouchableOpacity
               key={l.id}
               style={[s.listTab, activeList === l.id && { borderBottomColor: listColor(l), borderBottomWidth: 2 }]}
@@ -727,7 +792,7 @@ export default function TasksScreen() {
               <View style={[s.listDot, { backgroundColor: listColor(l) }]} />
               {editingListId === l.id ? (
                 <TextInput
-                  style={[s.listTabText, { color: '#111827', fontWeight: '700', minWidth: 60, padding: 0 }]}
+                  style={[s.listTabText, { color: '#1d1d1f', fontWeight: '700', minWidth: 60, padding: 0 }]}
                   value={editLabel}
                   onChangeText={setEditLabel}
                   autoFocus
@@ -736,47 +801,83 @@ export default function TasksScreen() {
                   onBlur={() => commitRename(l)}
                 />
               ) : (
-                <Text style={[s.listTabText, activeList === l.id && { color: '#111827', fontWeight: '700' }]}>{l.label}</Text>
+                <Text style={[s.listTabText, activeList === l.id && { color: '#1d1d1f', fontWeight: '700' }]}>{l.label}</Text>
               )}
-              {l.isShared && <Ionicons name="person-outline" size={11} color="#9ca3af" />}
+              {l.isShared && <Ionicons name="person-outline" size={11} color="#86868b" />}
             </TouchableOpacity>
+            </SortableItem>
           ))}
         </ScrollView>
+        </View>
         {canDeleteList && (
           <TouchableOpacity onPress={handleDeleteList} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="trash-outline" size={18} color="#9ca3af" />
+            <Ionicons name="trash-outline" size={18} color="#86868b" />
           </TouchableOpacity>
         )}
         <TouchableOpacity onPress={() => setShowTrash(true)} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="archive-outline" size={17} color="#9ca3af" />
+          <Ionicons name="archive-outline" size={17} color="#86868b" />
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setShowListModal(true)} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="add" size={22} color="#9ca3af" />
+          <Ionicons name="add" size={22} color="#86868b" />
         </TouchableOpacity>
       </View>
 
       {/* Tasks */}
-      <FlatList
-        data={visibleTasks}
+      <View ref={taskViewportRef} collapsable={false} style={{ flex: 1 }}>
+      <FlatList ref={taskListRef}
+        data={rows.map(row => ({ ...row, dragging: row.id === rowDrag.preview?.id }))}
+        CellRendererComponent={SortableCell}
         keyExtractor={item => String(item.id)}
-        renderItem={renderTask}
+        renderItem={({ item }) => (
+          <SortableItem id={item.id} ids={rowIds} sizes={rowSizes.current}
+            disabled={isSharedList || ordering} label={item.kind === 'section' ? item.section.title : item.task.title}
+            onMove={moveRow} drag={rowDrag}>
+            {item.kind === 'task' ? renderTask({ item: item.task }) : (
+              <TouchableOpacity onPress={() => setSectionDraft({ ...item.section })}
+                disabled={ordering} accessibilityLabel={`Sectie ${item.section.title} bewerken`}
+                style={{ backgroundColor: item.section.color || '#2563EB', borderRadius: 10, padding: 14 }}>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: item.section.color === '#E6B400' ? '#1d1d1f' : '#fff' }}>{item.section.title}</Text>
+              </TouchableOpacity>
+            )}
+          </SortableItem>
+        )}
+        scrollEnabled={!dragging}
+        windowSize={rowDrag.preview ? Math.max(21, rows.length * 2) : 21}
+        maxToRenderPerBatch={rowDrag.preview ? Math.max(10, rows.length) : 10}
+        onScroll={rowDrag.onScroll}
+        onContentSizeChange={rowDrag.onContentSizeChange}
+        scrollEventThrottle={16}
+        onScrollToIndexFailed={({ averageItemLength, index }) => {
+          const target = focusTarget.current;
+          if (!target || target.index !== index || target.attempts++ >= 8) return;
+          taskListRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: false });
+          clearTimeout(focusTimer.current);
+          focusTimer.current = setTimeout(() => taskListRef.current?.scrollToIndex({ index, viewPosition: 0.4, animated: true }), 200);
+        }}
+        removeClippedSubviews={false}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={s.list}
         ListEmptyComponent={
           <View style={s.emptyState}>
-            <Ionicons name="checkmark-circle-outline" size={40} color="#e5e7eb" />
+            <Ionicons name="checkmark-circle-outline" size={40} color="#e5e5ea" />
             <Text style={s.emptyText}>Nog geen taken</Text>
           </View>
         }
-        ListFooterComponent={canEdit ? (
+        ListFooterComponent={canEdit ? (<View>
+          {!isSharedList && <TouchableOpacity disabled={ordering} style={s.inlineAddBtn}
+            onPress={() => setSectionDraft({ id: 'sec_' + Date.now(), title: '', color: '#2563EB' })}>
+            <Ionicons name="add-outline" size={18} color="#86868b" />
+            <Text style={s.inlineAddText}>Sectie toevoegen</Text>
+          </TouchableOpacity>}
+          {(
           addingInline ? (
             <View style={s.inlineAddRow}>
               <Ionicons name="add" size={18} color="#2563EB" />
               <TextInput
                 style={s.inlineInput}
                 placeholder="Taaknaam..."
-                placeholderTextColor="#9ca3af"
+                placeholderTextColor="#86868b"
                 value={newTitle}
                 onChangeText={setNewTitle}
                 autoFocus
@@ -788,12 +889,14 @@ export default function TasksScreen() {
             </View>
           ) : (
             <TouchableOpacity style={s.inlineAddBtn} onPress={() => setAddingInline(true)}>
-              <Ionicons name="add" size={18} color="#9ca3af" />
+              <Ionicons name="add" size={18} color="#86868b" />
               <Text style={s.inlineAddText}>Taak toevoegen</Text>
             </TouchableOpacity>
           )
-        ) : null}
+          )}
+        </View>) : null}
       />
+      </View>
 
       {/* FAB */}
       {canEdit && (
@@ -806,7 +909,11 @@ export default function TasksScreen() {
       {modalTask !== undefined && (
         <TaskModal
           task={modalTask}
-          lists={lists}
+          initialList={activeList}
+          lists={lists.filter(l => {
+            const source = modalTask ? lists.find(x => x.id === modalTask.list) : activeListObj;
+            return source?.isShared ? l.isShared && l.ownerId === source.ownerId && l.permission === 'edit' : !l.isShared;
+          })}
           onSave={handleSave}
           onDelete={async (id) => { await deleteTask(id); setModalTask(undefined); }}
           onClose={() => setModalTask(undefined)}
@@ -814,6 +921,31 @@ export default function TasksScreen() {
       )}
 
       {/* List modal */}
+      {sectionDraft && <Modal transparent animationType="fade" onRequestClose={() => !sectionSaving && setSectionDraft(null)}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={lm.overlay}>
+          <View style={lm.sheet}>
+            <Text style={lm.title}>Sectie bewerken</Text>
+            <TextInput style={lm.input} value={sectionDraft.title} placeholder="Naam van de sectie" autoFocus
+              editable={!sectionSaving} onChangeText={title => setSectionDraft(s => ({ ...s, title }))} />
+            <View style={{ flexDirection: 'row', gap: 14, marginBottom: 20 }}>
+              {['#2563EB', '#DC2626', '#E6B400'].map((color, i) => <TouchableOpacity key={color}
+                disabled={sectionSaving} accessibilityLabel={['Blauw', 'Rood', 'Geel'][i]} accessibilityRole="button"
+                accessibilityState={{ selected: sectionDraft.color === color }}
+                onPress={() => setSectionDraft(s => ({ ...s, color }))}
+                style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: color, borderWidth: sectionDraft.color === color ? 3 : 0, borderColor: '#1d1d1f' }} />)}
+            </View>
+            <TouchableOpacity style={lm.saveBtn} disabled={sectionSaving || !sectionDraft.title.trim()} onPress={() => saveSection()}>
+              <Text style={lm.saveBtnText}>{sectionSaving ? 'Opslaan...' : 'Opslaan'}</Text>
+            </TouchableOpacity>
+            {sections.some(s => s.id === sectionDraft.id) && <TouchableOpacity disabled={sectionSaving} style={{ padding: 12 }} onPress={() => saveSection(true)}>
+              <Text style={{ color: '#DC2626', textAlign: 'center' }}>Sectie verwijderen (taken blijven staan)</Text>
+            </TouchableOpacity>}
+            <TouchableOpacity disabled={sectionSaving} style={{ padding: 12 }} onPress={() => setSectionDraft(null)}>
+              <Text style={{ color: '#6e6e73', textAlign: 'center' }}>Annuleren</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>}
       {showListModal && (
         <ListModal onSave={handleAddList} onClose={() => setShowListModal(false)} />
       )}
@@ -825,27 +957,27 @@ export default function TasksScreen() {
 }
 
 const s = StyleSheet.create({
-  container:       { flex: 1, backgroundColor: '#f9fafb' },
+  container:       { flex: 1, backgroundColor: '#f5f5f7' },
   listTabsContent: { paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
   tabIconBtn:      { paddingHorizontal: 10, paddingVertical: 13 },
   listTab:         { paddingHorizontal: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   listDot:         { width: 7, height: 7, borderRadius: 4 },
-  listTabText:     { fontSize: 13, color: '#9ca3af', fontWeight: '500' },
+  listTabText:     { fontSize: 15, color: '#86868b', fontWeight: '600', letterSpacing: -0.15 },
   list:            { padding: 12, gap: 8 },
   listEmpty:       { flex: 1, justifyContent: 'center' },
-  taskCard:        { backgroundColor: '#fff', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  taskCard:        { backgroundColor: '#fff', borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   taskLeft:        { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
   taskInfo:        { flex: 1 },
-  taskTitle:       { fontSize: 15, color: '#111827', fontWeight: '500', marginBottom: 4 },
+  taskTitle:       { fontSize: 16, color: '#1d1d1f', fontWeight: '500', letterSpacing: -0.16, marginBottom: 4 },
   taskBadges:      { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   badge:           { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   prioEmptyTap:    { minWidth: 30, minHeight: 18 },
   badgeText:       { fontSize: 11, fontWeight: '600' },
   inlineAddBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 6, marginTop: 2 },
-  inlineAddText:   { fontSize: 14, color: '#9ca3af', fontWeight: '600' },
+  inlineAddText:   { fontSize: 14, color: '#86868b', fontWeight: '600' },
   inlineAddRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, marginTop: 2, borderWidth: 1, borderColor: '#2563EB' },
-  inlineInput:     { flex: 1, fontSize: 15, color: '#111827', paddingVertical: 6 },
+  inlineInput:     { flex: 1, fontSize: 15, color: '#1d1d1f', paddingVertical: 6 },
   emptyState:      { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12, paddingTop: 80 },
-  emptyText:       { fontSize: 15, color: '#9ca3af' },
+  emptyText:       { fontSize: 15, color: '#86868b' },
   fab:             { position: 'absolute', bottom: 24, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center', shadowColor: '#2563EB', shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
 });

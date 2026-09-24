@@ -391,7 +391,7 @@ export default function AIScreen() {
               <View style={s.bubbleRow}>
                 <View style={[s.bubble, s.bubbleAssistant, { flexDirection: 'row', alignItems: 'center', gap: 8 }]}>
                   <ActivityIndicator size="small" color="#2563EB" />
-                  {loadingStatus ? <Text style={{ fontSize: 12, color: '#6b7280' }}>{loadingStatus}</Text> : null}
+                  {loadingStatus ? <Text style={{ fontSize: 12, color: '#6e6e73' }}>{loadingStatus}</Text> : null}
                 </View>
               </View>
             );
@@ -427,12 +427,12 @@ export default function AIScreen() {
       {/* Input bar */}
       <View style={s.inputBar}>
         <TouchableOpacity style={s.attachBtn} onPress={pickImage}>
-          <Ionicons name="image-outline" size={20} color="#6b7280" />
+          <Ionicons name="image-outline" size={20} color="#6e6e73" />
         </TouchableOpacity>
         <TextInput
           style={s.input}
           placeholder="Vraag iets aan je assistent..."
-          placeholderTextColor="#9ca3af"
+          placeholderTextColor="#86868b"
           value={input}
           onChangeText={setInput}
           onSubmitEditing={() => send()}
@@ -453,27 +453,27 @@ export default function AIScreen() {
 
 const s = StyleSheet.create({
   container:        { flex: 1, backgroundColor: '#fafafa' },
-  statsBar:         { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', backgroundColor: '#fff' },
-  statsText:        { fontSize: 12, color: '#9ca3af' },
+  statsBar:         { paddingHorizontal: 16, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#e5e5ea', backgroundColor: '#fff' },
+  statsText:        { fontSize: 12, color: '#86868b' },
   messageList:      { padding: 14, gap: 10, paddingBottom: 4 },
   bubbleRow:        { flexDirection: 'row', justifyContent: 'flex-start' },
   bubbleRowUser:    { justifyContent: 'flex-end' },
   bubble:           { paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16 },
-  bubbleAssistant:  { backgroundColor: '#fff', borderTopLeftRadius: 4, borderWidth: 1, borderColor: '#e5e7eb' },
+  bubbleAssistant:  { backgroundColor: '#fff', borderTopLeftRadius: 4, borderWidth: 1, borderColor: '#e5e5ea' },
   bubbleUser:       { backgroundColor: '#2563EB', borderTopRightRadius: 4 },
-  bubbleText:       { fontSize: 14, color: '#111827', lineHeight: 20 },
+  bubbleText:       { fontSize: 14, color: '#1d1d1f', lineHeight: 20 },
   bubbleTextUser:   { color: '#fff' },
-  imagePreview:     { width: 180, height: 180, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb' },
-  suggestionsRow:   { maxHeight: 42, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#fff' },
+  imagePreview:     { width: 180, height: 180, borderRadius: 10, borderWidth: 1, borderColor: '#e5e5ea' },
+  suggestionsRow:   { maxHeight: 42, borderTopWidth: 1, borderTopColor: '#e5e5ea', backgroundColor: '#fff' },
   suggestions:      { paddingHorizontal: 12, paddingVertical: 7, gap: 8, flexDirection: 'row' },
-  suggestionChip:   { backgroundColor: '#f3f4f6', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: '#e5e7eb' },
-  suggestionText:   { fontSize: 12, color: '#374151' },
-  pendingImageRow:  { flexDirection: 'row', padding: 8, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#fff' },
-  pendingThumb:     { width: 52, height: 52, borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb' },
-  removeImage:      { position: 'absolute', top: 4, left: 58, width: 18, height: 18, borderRadius: 9, backgroundColor: '#374151', justifyContent: 'center', alignItems: 'center' },
-  inputBar:         { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 8, borderTopWidth: 1, borderTopColor: '#e5e7eb', backgroundColor: '#fff' },
-  attachBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f3f4f6', justifyContent: 'center', alignItems: 'center' },
-  input:            { flex: 1, backgroundColor: '#f3f4f6', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 9, fontSize: 14, color: '#111827' },
+  suggestionChip:   { backgroundColor: '#f5f5f7', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: '#e5e5ea' },
+  suggestionText:   { fontSize: 12, color: '#424245' },
+  pendingImageRow:  { flexDirection: 'row', padding: 8, paddingHorizontal: 14, borderTopWidth: 1, borderTopColor: '#e5e5ea', backgroundColor: '#fff' },
+  pendingThumb:     { width: 52, height: 52, borderRadius: 8, borderWidth: 1, borderColor: '#e5e5ea' },
+  removeImage:      { position: 'absolute', top: 4, left: 58, width: 18, height: 18, borderRadius: 9, backgroundColor: '#424245', justifyContent: 'center', alignItems: 'center' },
+  inputBar:         { flexDirection: 'row', alignItems: 'center', padding: 10, gap: 8, borderTopWidth: 1, borderTopColor: '#e5e5ea', backgroundColor: '#fff' },
+  attachBtn:        { width: 36, height: 36, borderRadius: 18, backgroundColor: '#f5f5f7', justifyContent: 'center', alignItems: 'center' },
+  input:            { flex: 1, backgroundColor: '#f5f5f7', borderRadius: 22, paddingHorizontal: 16, paddingVertical: 9, fontSize: 14, color: '#1d1d1f' },
   sendBtn:          { width: 38, height: 38, borderRadius: 19, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center' },
   sendBtnDisabled:  { backgroundColor: '#d1d5db' },
 });

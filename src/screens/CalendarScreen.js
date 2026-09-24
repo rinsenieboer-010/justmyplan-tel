@@ -5,6 +5,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
+import NoteEditor from '../components/NoteEditor';
+import EditableCalendarEvent from '../components/EditableCalendarEvent';
+import { eventTimeLabel } from '../calendarGesture';
 import { dateKey, getTodayKey, getWeekDates, DAYS_SHORT, MONTHS, MONTHS_SHORT, pad, OWN_EVENT_COLORS, PERSON_COLORS } from '../utils';
 
 // Gedeelde agenda's krijgen één vaste, halfdoorzichtige kleur en staan achter je eigen afspraken
@@ -16,8 +19,8 @@ const EVENT_TEXT   = { blue: '#1d4ed8', red: '#b91c1c', yellow: '#92400e', green
 // Korte weergavenaam uit e-mail (deel vóór de @)
 const shortName = (email) => (email || '').split('@')[0];
 
-const PRIO_BG    = { '': '#f3f4f6', hoog: '#FEE2E2', midden: '#FFF176', laag: '#DBEAFE' };
-const PRIO_COLOR = { '': '#9ca3af', hoog: '#DC2626', midden: '#92400e', laag: '#1d4ed8' };
+const PRIO_BG    = { '': '#f5f5f7', hoog: '#FEE2E2', midden: '#FFF176', laag: '#DBEAFE' };
+const PRIO_COLOR = { '': '#86868b', hoog: '#DC2626', midden: '#92400e', laag: '#1d4ed8' };
 
 const SLOT_H    = 60;   // pixels per uur
 const HOUR_FROM = 8;    // raster begint om 08:00 (07:00–08:00 is de taken-rij)
@@ -53,12 +56,12 @@ function TimeRow({ label, h, m, onChangeH, onChangeM }) {
 
 const tp = StyleSheet.create({
   row:      { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  label:    { fontSize: 13, color: '#6b7280', width: 36 },
+  label:    { fontSize: 13, color: '#6e6e73', width: 36 },
   controls: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  btn:      { width: 30, height: 30, borderRadius: 6, backgroundColor: '#f3f4f6', justifyContent: 'center', alignItems: 'center' },
-  btnText:  { fontSize: 16, color: '#374151', fontWeight: '700' },
-  timeText: { fontSize: 16, fontWeight: '700', color: '#111827', width: 30, textAlign: 'center' },
-  colon:    { fontSize: 16, fontWeight: '700', color: '#111827', marginHorizontal: 2 },
+  btn:      { width: 30, height: 30, borderRadius: 6, backgroundColor: '#f5f5f7', justifyContent: 'center', alignItems: 'center' },
+  btnText:  { fontSize: 16, color: '#424245', fontWeight: '700' },
+  timeText: { fontSize: 16, fontWeight: '700', color: '#1d1d1f', width: 30, textAlign: 'center' },
+  colon:    { fontSize: 16, fontWeight: '700', color: '#1d1d1f', marginHorizontal: 2 },
 });
 
 // ── EVENT MODAL ───────────────────────────────────────────────────────────────
@@ -71,35 +74,44 @@ function EventModal({ event, selectedDate, invitees = [], onSave, onDelete, onCl
   const [endM,   setEndM]   = useState(event?.endM   ?? 0);
   const [color,  setColor]  = useState(event?.color  || 'blue');
   const [note,   setNote]   = useState(event?.note   || '');
+  const [noteEditorOpen, setNoteEditorOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const saveLock = useRef(false);
   const [sharedWith, setSharedWith] = useState(event?.sharedWith || []);
 
   const toggleShare = (email) =>
     setSharedWith(sw => sw.includes(email) ? sw.filter(e => e !== email) : [...sw, email]);
 
-  const save = () => {
+  const save = async () => {
+    if (saveLock.current) return;
     if (!title.trim()) { Alert.alert('Voer een titel in'); return; }
-    onSave({
+    if (endH * 60 + endM <= startH * 60 + startM) { Alert.alert('Controleer de tijden', 'De eindtijd moet na de begintijd liggen.'); return; }
+    saveLock.current = true;
+    setSaving(true);
+    try { await onSave({
       ...(isNew ? {} : event),
       title: title.trim(), date: selectedDate, startH, startM, endH, endM, color, note,
       shared: sharedWith.length > 0, sharedWith,
-    });
+    }); } catch { Alert.alert('Niet opgeslagen', 'De afspraak kon niet worden opgeslagen. Probeer het opnieuw.'); }
+    finally { saveLock.current = false; setSaving(false); }
   };
 
   return (
-    <Modal animationType="slide" transparent onRequestClose={onClose}>
+    <Modal animationType="slide" transparent onRequestClose={() => { if (!saving) noteEditorOpen ? setNoteEditorOpen(false) : onClose(); }}>
       <KeyboardAvoidingView style={em.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
+        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => !saving && onClose()} />
         <View style={em.sheet}>
           <View style={em.handle} />
           <Text style={em.sheetTitle}>{isNew ? 'Afspraak toevoegen' : 'Afspraak bewerken'}</Text>
-          <ScrollView showsVerticalScrollIndicator={false}>
+          <ScrollView showsVerticalScrollIndicator={false} pointerEvents={saving ? 'none' : 'auto'} keyboardShouldPersistTaps="handled">
             <TextInput
               style={em.titleInput}
               placeholder="Titel..."
-              placeholderTextColor="#9ca3af"
+              placeholderTextColor="#86868b"
               value={title}
               onChangeText={setTitle}
               autoFocus={isNew}
+              multiline
             />
             <TimeRow label="Van" h={startH} m={startM} onChangeH={setStartH} onChangeM={setStartM} />
             <TimeRow label="Tot" h={endH}   m={endM}   onChangeH={setEndH}   onChangeM={setEndM} />
@@ -137,17 +149,11 @@ function EventModal({ event, selectedDate, invitees = [], onSave, onDelete, onCl
             )}
 
             <Text style={em.label}>Notitie</Text>
-            <TextInput
-              style={em.noteInput}
-              placeholder="Notitie (optioneel)..."
-              placeholderTextColor="#9ca3af"
-              value={note}
-              onChangeText={setNote}
-              multiline
-              numberOfLines={3}
-            />
-            <TouchableOpacity style={em.saveBtn} onPress={save}>
-              <Text style={em.saveBtnText}>{isNew ? 'Toevoegen' : 'Opslaan'}</Text>
+            <TouchableOpacity style={em.noteInput} onPress={() => setNoteEditorOpen(true)}>
+              <Text style={{ color: note ? '#1d1d1f' : '#86868b', fontSize: 14 }} numberOfLines={3}>{note || 'Notitie (optioneel)...'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity disabled={saving} style={em.saveBtn} onPress={save}>
+              <Text style={em.saveBtnText}>{saving ? 'Opslaan...' : isNew ? 'Toevoegen' : 'Opslaan'}</Text>
             </TouchableOpacity>
             {!isNew && (
               <TouchableOpacity style={em.deleteBtn} onPress={() => { onDelete(event.id); onClose(); }}>
@@ -157,6 +163,7 @@ function EventModal({ event, selectedDate, invitees = [], onSave, onDelete, onCl
           </ScrollView>
         </View>
       </KeyboardAvoidingView>
+      {noteEditorOpen && <NoteEditor value={note} onChange={setNote} onClose={() => setNoteEditorOpen(false)} />}
     </Modal>
   );
 }
@@ -165,18 +172,18 @@ const em = StyleSheet.create({
   overlay:        { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.4)' },
   sheet:          { backgroundColor: '#fff', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 24, maxHeight: '85%' },
   handle:         { width: 36, height: 4, backgroundColor: '#d1d5db', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
-  sheetTitle:     { fontSize: 18, fontWeight: '700', color: '#111827', marginBottom: 16 },
-  titleInput:     { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 12, fontSize: 16, color: '#111827', marginBottom: 16 },
-  label:          { fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
+  sheetTitle:     { fontSize: 18, fontWeight: '700', color: '#1d1d1f', marginBottom: 16 },
+  titleInput:     { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 8, padding: 12, fontSize: 16, color: '#1d1d1f', marginBottom: 16 },
+  label:          { fontSize: 12, fontWeight: '600', color: '#6e6e73', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   colorRow:       { flexDirection: 'row', gap: 12, marginBottom: 16 },
   colorDot:       { width: 28, height: 28, borderRadius: 14, borderWidth: 3, borderColor: 'transparent' },
-  colorDotActive: { borderColor: '#111827' },
+  colorDotActive: { borderColor: '#1d1d1f' },
   shareRow:       { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  shareChip:      { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
-  shareChipMe:    { backgroundColor: '#374151', borderColor: '#374151' },
+  shareChip:      { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 6 },
+  shareChipMe:    { backgroundColor: '#424245', borderColor: '#424245' },
   shareChipOn:    { backgroundColor: '#2563EB', borderColor: '#2563EB' },
-  shareChipText:  { fontSize: 13, color: '#374151', fontWeight: '600' },
-  noteInput:      { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8, padding: 10, fontSize: 14, color: '#111827', marginBottom: 16, minHeight: 70, textAlignVertical: 'top' },
+  shareChipText:  { fontSize: 13, color: '#424245', fontWeight: '600' },
+  noteInput:      { borderWidth: 1, borderColor: '#e5e5ea', borderRadius: 8, padding: 10, fontSize: 14, color: '#1d1d1f', marginBottom: 16, minHeight: 70, textAlignVertical: 'top' },
   saveBtn:        { backgroundColor: '#2563EB', borderRadius: 8, paddingVertical: 13, alignItems: 'center', marginBottom: 10 },
   saveBtnText:    { color: '#fff', fontSize: 15, fontWeight: '700' },
   deleteBtn:      { backgroundColor: '#FEE2E2', borderRadius: 8, paddingVertical: 13, alignItems: 'center' },
@@ -185,12 +192,17 @@ const em = StyleSheet.create({
 
 // ── CALENDAR SCREEN ───────────────────────────────────────────────────────────
 export default function CalendarScreen() {
-  const { tasks, events, sharedEvents: allSharedEvents, personColors, outgoingShares, addEvent, updateEvent, deleteEvent, activeScreen, isSharedVisible } = useData();
+  const { tasks, events, sharedEvents: allSharedEvents, personColors, outgoingShares, addEvent, updateEvent, deleteEvent, activeScreen, isSharedVisible, setPagerEnabled } = useData();
   // Gedeelde agenda's die de ontvanger heeft verborgen niet tonen
   const sharedEvents = allSharedEvents.filter(e => isSharedVisible('cal:' + e.ownerId));
   const [weekBase, setWeekBase]     = useState(new Date());
   const [modalEvent, setModalEvent] = useState(undefined);
   const scrollRef = useRef(null);
+  const [selectedEventId, setSelectedEventId] = useState(null);
+  const [timePreview, setTimePreview] = useState(null);
+  const [draggingEvent, setDraggingEvent] = useState(false);
+  const onEventDragging = value => { setDraggingEvent(value); setPagerEnabled(!value); };
+  useEffect(() => { setSelectedEventId(null); setTimePreview(null); }, [weekBase, activeScreen]);
 
   // Bij het openen van de agenda altijd terug naar de huidige week (index 1 = Agenda)
   useEffect(() => { if (activeScreen === 1) setWeekBase(new Date()); }, [activeScreen]);
@@ -202,7 +214,7 @@ export default function CalendarScreen() {
   const invitees = (outgoingShares || []).filter(s => s.status === 'accepted').map(s => s.invited_email);
 
   // Visuele stijl van een gedeelde afspraak op basis van de toegewezen persoonskleur
-  const NEUTRAL = { dot: '#9ca3af', bg: '#F3F4F6', border: '#9ca3af', text: '#6b7280' };
+  const NEUTRAL = { dot: '#86868b', bg: '#F3F4F6', border: '#86868b', text: '#6e6e73' };
   const personStyle = (email) => PERSON_COLORS[personColors[email]] || NEUTRAL;
 
   // "Hele dag"-afspraak: omspant (vrijwel) het hele zichtbare raster → toon als
@@ -234,7 +246,7 @@ export default function CalendarScreen() {
 
   // Nieuwe afspraak op een specifieke dag + uur
   const openNewEvent = (dateStr, h) => {
-    setModalEvent({ date: dateStr, startH: h, startM: 0, endH: Math.min(h + 1, HOUR_TO - 1), endM: 0 });
+    setModalEvent({ date: dateStr, startH: h, startM: 0, endH: Math.min(h + 1, HOUR_TO), endM: 0 });
   };
 
   const monthLabel = weekDates[0].getMonth() === weekDates[6].getMonth()
@@ -261,11 +273,11 @@ export default function CalendarScreen() {
       {/* Week navigatie */}
       <View style={s.weekNav}>
         <TouchableOpacity onPress={prevWeek} style={s.weekNavBtn}>
-          <Ionicons name="chevron-back" size={20} color="#374151" />
+          <Ionicons name="chevron-back" size={20} color="#424245" />
         </TouchableOpacity>
         <Text style={s.weekNavLabel}>{monthLabel}</Text>
         <TouchableOpacity onPress={nextWeek} style={s.weekNavBtn}>
-          <Ionicons name="chevron-forward" size={20} color="#374151" />
+          <Ionicons name="chevron-forward" size={20} color="#424245" />
         </TouchableOpacity>
       </View>
 
@@ -295,8 +307,8 @@ export default function CalendarScreen() {
             return (
               <View key={i} style={s.taskCol}>
                 {dayTasks.map(task => (
-                  <View key={task.id} style={[s.taskChip, { backgroundColor: PRIO_BG[task.priority] || '#f3f4f6', borderLeftColor: PRIO_COLOR[task.priority] || '#9ca3af' }]}>
-                    <Text style={[s.taskChipText, { color: PRIO_COLOR[task.priority] || '#6b7280' }]} numberOfLines={1}>{task.title}</Text>
+                  <View key={task.id} style={[s.taskChip, { backgroundColor: PRIO_BG[task.priority] || '#f5f5f7', borderLeftColor: PRIO_COLOR[task.priority] || '#86868b' }]}>
+                    <Text style={[s.taskChipText, { color: PRIO_COLOR[task.priority] || '#6e6e73' }]} numberOfLines={1}>{task.title}</Text>
                   </View>
                 ))}
               </View>
@@ -306,7 +318,7 @@ export default function CalendarScreen() {
       )}
 
       {/* Tijdraster — week */}
-      <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={{ flex: 1 }} showsVerticalScrollIndicator={false} scrollEnabled={!draggingEvent}>
         <View style={[s.gridRow, { height: HOURS.length * SLOT_H + 12 }]}>
 
           {/* Tijd-gootje met uurlabels */}
@@ -322,7 +334,7 @@ export default function CalendarScreen() {
             const isToday   = key === todayKey;
             const dayEvents = events.filter(e => e.date === key && !isAllDay(e));
             return (
-              <View key={dayIdx} style={[s.dayCol, isToday && s.dayColToday]}>
+              <View key={dayIdx} style={[s.dayCol, isToday && s.dayColToday, { zIndex: dayEvents.some(e => e.id === selectedEventId) ? 10 : 0 }]}>
                 {/* Uurlijnen + klikvlakken */}
                 {HOURS.map(h => (
                   <View key={h}>
@@ -375,40 +387,39 @@ export default function CalendarScreen() {
                   if (top === null) return null;
                   return (
                     <View key={'tk-' + task.id} pointerEvents="none"
-                      style={[s.timedTaskChip, { top, backgroundColor: PRIO_BG[task.priority] || '#f3f4f6', borderLeftColor: PRIO_COLOR[task.priority] || '#9ca3af' }]}>
-                      <Text style={[s.timedTaskText, { color: PRIO_COLOR[task.priority] || '#6b7280' }]} numberOfLines={1}>✓ {task.title}</Text>
+                      style={[s.timedTaskChip, { top, backgroundColor: PRIO_BG[task.priority] || '#f5f5f7', borderLeftColor: PRIO_COLOR[task.priority] || '#86868b' }]}>
+                      <Text style={[s.timedTaskText, { color: PRIO_COLOR[task.priority] || '#6e6e73' }]} numberOfLines={1}>✓ {task.title}</Text>
                     </View>
                   );
                 })}
 
                 {/* Mijn afspraken (bovenop, vol gekleurd) */}
-                {dayEvents.map(ev => {
-                  const rawTop = (ev.startH - HOUR_FROM + ev.startM / 60) * SLOT_H;
-                  const top    = Math.max(0, rawTop);
-                  const height = Math.max((ev.endH - HOUR_FROM + ev.endM / 60) * SLOT_H - top, 18);
-                  return (
-                    <TouchableOpacity
-                      key={ev.id}
-                      onPress={() => setModalEvent(ev)}
-                      style={[s.eventBlock, {
-                        top,
-                        height,
-                        backgroundColor: EVENT_BG[ev.color]  || '#DBEAFE',
-                        borderLeftColor: EVENT_BORDER[ev.color] || '#2563EB',
-                      }]}
-                    >
-                      <Text style={[s.eventBlockTitle, { color: EVENT_TEXT[ev.color] || '#1d4ed8' }]} numberOfLines={height > 30 ? 2 : 1}>
-                        {ev.title}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                {dayEvents.map(ev => (
+                  <EditableCalendarEvent key={ev.id} event={ev} selected={selectedEventId === ev.id}
+                    onSelect={setSelectedEventId} onOpen={event => { setSelectedEventId(null); setTimePreview(null); setModalEvent(event); }}
+                    onSave={updateEvent} onDragging={onEventDragging} onPreview={setTimePreview}
+                    pixelsPerHour={SLOT_H} fromHour={HOUR_FROM} toHour={HOUR_TO}
+                    backgroundColor={EVENT_BG[ev.color] || '#DBEAFE'} borderColor={EVENT_BORDER[ev.color] || '#2563EB'}
+                    textColor={EVENT_TEXT[ev.color] || '#1d4ed8'} />
+                ))}
               </View>
             );
           })}
 
         </View>
       </ScrollView>
+      {selectedEventId && timePreview && <View style={{ position: 'absolute', bottom: 16, alignSelf: 'center',
+        backgroundColor: '#1d1d1f', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, zIndex: 30,
+        flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        <View pointerEvents="none">
+          <Text style={{ color: '#fff', fontSize: 14, fontWeight: '600' }}>{eventTimeLabel(timePreview)}</Text>
+          <Text style={{ color: '#d1d5db', fontSize: 11, marginTop: 3 }}>Sleep een rand om de duur te wijzigen</Text>
+        </View>
+        <TouchableOpacity disabled={draggingEvent} onPress={() => { setSelectedEventId(null); setTimePreview(null); }}
+          accessibilityLabel="Klaar met aanpassen" style={{ padding: 8 }}>
+          <Ionicons name="checkmark" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>}
 
       {/* Modal */}
       {modalEvent !== undefined && (
@@ -427,33 +438,33 @@ export default function CalendarScreen() {
 
 const s = StyleSheet.create({
   container:      { flex: 1, backgroundColor: '#fff' },
-  weekNav:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
+  weekNav:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#e5e5ea' },
   weekNavBtn:     { padding: 8 },
-  weekNavLabel:   { fontSize: 14, fontWeight: '600', color: '#374151' },
+  weekNavLabel:   { fontSize: 17, fontWeight: '600', letterSpacing: -0.17, color: '#1d1d1f' },
 
   // Dag-koppen
-  headerRow:      { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e7eb' },
-  headerCol:      { flex: 1, alignItems: 'center', paddingVertical: 6, borderLeftWidth: 1, borderLeftColor: '#f3f4f6' },
+  headerRow:      { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e5ea' },
+  headerCol:      { flex: 1, alignItems: 'center', paddingVertical: 6, borderLeftWidth: 1, borderLeftColor: '#f5f5f7' },
   headerColToday: { backgroundColor: '#EFF6FF' },
-  headerName:     { fontSize: 11, color: '#9ca3af', fontWeight: '600' },
-  headerNum:      { fontSize: 15, color: '#111827', fontWeight: '700', marginTop: 1 },
+  headerName:     { fontSize: 11, color: '#86868b', fontWeight: '600' },
+  headerNum:      { fontSize: 15, color: '#1d1d1f', fontWeight: '700', marginTop: 1 },
   headerTodayText:{ color: '#2563EB' },
 
   // Deadline-taken strip
   // Hele-dag-afspraak: volle hoogte, smalle band aan de linkerkant van de dag
   allDayBlock:    { position: 'absolute', top: 0, width: '42%', borderRadius: 4, borderWidth: 1, borderLeftWidth: 3, paddingHorizontal: 3, paddingVertical: 3, overflow: 'hidden', zIndex: 0 },
   allDayBlockText:{ fontSize: 9, fontWeight: '700', lineHeight: 11 },
-  taskRow:        { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f3f4f6', paddingVertical: 3, minHeight: 24 },
-  taskRowLabel:   { fontSize: 9, fontWeight: '700', color: '#9ca3af', letterSpacing: 1, textTransform: 'uppercase', textAlign: 'center', transform: [{ rotate: '-90deg' }] },
-  taskCol:        { flex: 1, paddingHorizontal: 2, gap: 2, borderLeftWidth: 1, borderLeftColor: '#f3f4f6' },
+  taskRow:        { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f5f5f7', paddingVertical: 3, minHeight: 24 },
+  taskRowLabel:   { fontSize: 9, fontWeight: '700', color: '#86868b', letterSpacing: 1, textTransform: 'uppercase', textAlign: 'center', transform: [{ rotate: '-90deg' }] },
+  taskCol:        { flex: 1, paddingHorizontal: 2, gap: 2, borderLeftWidth: 1, borderLeftColor: '#f5f5f7' },
   taskChip:       { borderLeftWidth: 2, borderRadius: 3, paddingHorizontal: 3, paddingVertical: 1 },
   taskChipText:   { fontSize: 9, fontWeight: '600' },
-  taskMore:       { fontSize: 8, color: '#9ca3af', fontWeight: '700', paddingLeft: 3 },
+  taskMore:       { fontSize: 8, color: '#86868b', fontWeight: '700', paddingLeft: 3 },
 
   // Tijdraster
   gridRow:        { flexDirection: 'row', position: 'relative' },
-  timeLabel:      { position: 'absolute', right: 4, width: TIME_COL - 4, fontSize: 10, color: '#9ca3af', textAlign: 'right' },
-  dayCol:         { flex: 1, position: 'relative', borderLeftWidth: 1, borderLeftColor: '#e5e7eb' },
+  timeLabel:      { position: 'absolute', right: 4, width: TIME_COL - 4, fontSize: 10, color: '#86868b', textAlign: 'right' },
+  dayCol:         { flex: 1, position: 'relative', borderLeftWidth: 1, borderLeftColor: '#e5e5ea' },
   dayColToday:    { backgroundColor: '#F8FAFF' },
   hourLine:       { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: '#eef0f2' },
   tapZone:        { position: 'absolute', left: 0, right: 0 },

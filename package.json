@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "test": "node --test tests/taskOrder.test.mjs tests/dbOrder.test.mjs tests/mobileInteraction.test.cjs tests/mobileRefinements.test.mjs",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
@@ -29,5 +30,8 @@
     "react-native-screens": "~4.16.0",
     "react-native-url-polyfill": "^3.0.0"
   },
-  "private": true
+  "private": true,
+  "devDependencies": {
+    "react-test-renderer": "19.1.0"
+  }
 }

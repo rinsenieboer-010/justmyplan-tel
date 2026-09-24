@@ -13,16 +13,19 @@ export async function loadTasks(userId) {
 }
 
 export async function addTaskDB(userId, task) {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('tasks')
     .insert({ ...taskToDB(task), user_id: userId })
     .select()
     .single();
-  return data ? dbToTask(data) : task;
+  if (error) throw error;
+  if (!data) throw new Error('Taak is niet opgeslagen.');
+  return dbToTask(data);
 }
 
 export async function updateTaskDB(task) {
-  await supabase.from('tasks').update(taskToDB(task)).eq('id', task.id);
+  const { error } = await supabase.from('tasks').update(taskToDB(task)).eq('id', task.id);
+  if (error) throw error;
 }
 
 // Zachte verwijdering: zet deleted_at zodat de taak naar de prullenbak gaat
@@ -63,6 +66,7 @@ function taskToDB(t) {
     recurrence: t.recurrence || null,
     reminder_time: t.reminderTime || null,
     last_completed_at: t.lastCompletedAt || null,
+    ...(t.resetSortOrder ? { sort_order: null } : {}),
   };
 }
 
@@ -79,6 +83,7 @@ function dbToTask(r) {
     reminderTime: r.reminder_time || null,
     lastCompletedAt: r.last_completed_at || null,
     deletedAt: r.deleted_at || null,
+    sortOrder: r.sort_order ?? null,
   };
 }
 
@@ -103,7 +108,8 @@ export async function addEventDB(userId, event) {
 }
 
 export async function updateEventDB(event) {
-  await supabase.from('events').update(eventToDB(event)).eq('id', event.id);
+  const { error } = await supabase.from('events').update(eventToDB(event)).eq('id', event.id);
+  if (error) throw error;
 }
 
 export async function deleteEventDB(id) {
@@ -150,7 +156,9 @@ export async function loadLists(userId) {
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
-  return data && data.length > 0 ? data.map(dbToList) : null;
+  return data && data.length > 0 ? data
+    .map((r, i) => ({ list: dbToList(r), key: r.sort_order ?? 100000 + i }))
+    .sort((a, b) => a.key - b.key).map(x => x.list) : null;
 }
 
 export async function addListDB(userId, list) {
@@ -165,9 +173,10 @@ export async function addListDB(userId, list) {
 // Aanmaken óf bijwerken (per gebruiker uniek op user_id+id) — gebruikt voor
 // het persisteren van lijsten en hernoemen, ook van de standaardlijsten.
 export async function upsertListDB(userId, list) {
-  await supabase
+  const { error } = await supabase
     .from('lists')
     .upsert({ id: list.id, user_id: userId, label: list.label, color: list.color }, { onConflict: 'user_id,id' });
+  if (error) throw error;
 }
 
 export async function updateListDB(list) {
@@ -179,7 +188,25 @@ export async function deleteListDB(userId, id) {
 }
 
 function dbToList(r) {
-  return { id: r.id, label: r.label, color: r.color };
+  return { id: r.id, label: r.label, color: r.color, sections: Array.isArray(r.sections) ? r.sections : [] };
+}
+
+export async function saveListOrderDB(userId, lists) {
+  const { error } = await supabase.from('lists').upsert(
+    lists.map((l, sort_order) => ({ id: l.id, user_id: userId, label: l.label, color: l.color, sort_order })),
+    { onConflict: 'user_id,id' }
+  );
+  if (error) throw error;
+}
+
+export async function saveTaskOrderDB(userId, listId, changes) {
+  const results = await Promise.all(changes.tasks.map(({ id, sortOrder }) =>
+    supabase.from('tasks').update({ sort_order: sortOrder }).eq('user_id', userId).eq('list_id', listId).eq('id', id)
+  ));
+  const failure = results.find(result => result.error);
+  if (failure) throw failure.error;
+  const { error } = await supabase.from('lists').update({ sections: changes.sections }).eq('user_id', userId).eq('id', listId);
+  if (error) throw error;
 }
 
 // ── SHARE LISTS (granulair delen: welke lijsten een share omvat) ───────────────

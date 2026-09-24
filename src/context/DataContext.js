@@ -6,11 +6,13 @@ import {
   loadDeletedTasks, restoreTaskDB,
   addEventDB, updateEventDB, deleteEventDB,
   upsertListDB, deleteListDB,
+  saveListOrderDB, saveTaskOrderDB,
   loadShareLists, setShareLists,
   loadPersonColors, setPersonColorDB, removePersonColorDB,
 } from '../db';
 import { supabase } from '../supabase';
 import { dateKey } from '../utils';
+import { shortenTaskTitle } from '../shortenTaskTitle';
 import { ensureNotificationPermissions, syncNotifications } from '../notifications';
 
 const DataContext = createContext(null);
@@ -58,6 +60,9 @@ export function DataProvider({ userId, children }) {
   // meteen de echte taken/lijsten toont in plaats van 2-3s lege blueprint.
   const cacheKey     = `jmp_cache_${userId}`;
   const freshLoaded  = useRef(false);
+  const orderSaving = useRef(false);
+  const reloadRevision = useRef(0);
+  const [ordering, setOrdering] = useState(false);
 
   // Zichtbaarheid van gedeelde items die de ontvanger zelf regelt (lokaal).
   // Bevat sleutels: een gedeelde lijst-id (verbergt die takenlijst) of
@@ -85,6 +90,8 @@ export function DataProvider({ userId, children }) {
   const [shareListsMap, setShareListsMap]   = useState({}); // shareId -> [listId,...] (mijn uitgaande)
 
   const reloadAll = useCallback(async () => {
+    if (orderSaving.current) return;
+    const revision = ++reloadRevision.current;
     const { data: { session } } = await supabase.auth.getSession();
     const userEmail = session?.user?.email;
 
@@ -170,6 +177,7 @@ export function DataProvider({ userId, children }) {
       }
     });
 
+    if (orderSaving.current || revision !== reloadRevision.current) return;
     setTasks([...t, ...sharedTasks]);
     setEvents(ev);
     setSharedEvents(allSharedEvents);
@@ -240,11 +248,25 @@ export function DataProvider({ userId, children }) {
   const addTask = async (task, ownerId) => {
     const targetId = ownerId || userId;
     const parsed = ownerId ? parseSharedId(task.list) : null;
-    const dbTask = parsed ? { ...task, list: parsed.originalId } : task;
-    await addTaskDB(targetId, dbTask);
+    const compact = await shortenTaskTitle(task.title, task.note || '');
+    const dbTask = { ...task, ...compact, list: parsed?.originalId || task.list };
+    const saved = await addTaskDB(targetId, dbTask);
+    await reloadAll();
+    return { ...saved, list: task.list };
+  };
+  const updateTask = async (task) => {
+    const original = tasks.find(t => t.id === task.id);
+    const destination = lists.find(l => l.id === task.list);
+    const originalOwner = original?.ownerId || userId;
+    const destinationOwner = destination?.ownerId || userId;
+    if (!original || !destination || originalOwner !== destinationOwner || (destination.isShared && destination.permission !== 'edit')) {
+      throw new Error('Deze taak kan niet naar die lijst worden verplaatst.');
+    }
+    const parsed = parseSharedId(task.list);
+    const compact = task.title !== original.title ? await shortenTaskTitle(task.title, task.note || '') : {};
+    await updateTaskDB({ ...task, ...compact, list: parsed?.originalId || task.list, resetSortOrder: original.list !== task.list });
     await reloadAll();
   };
-  const updateTask = async (task) => { await updateTaskDB(task); await reloadAll(); };
   const deleteTask = async (id) => { await trashTaskDB(id); await reloadAll(); };
   const completeTask = async (task) => {
     if (task.recurrence) {
@@ -270,6 +292,7 @@ export function DataProvider({ userId, children }) {
       while (next <= today) step();
       await updateTaskDB({
         ...task,
+        list: parseSharedId(task.list)?.originalId || task.list,
         status: '',
         deadline: dateKey(next),
         lastCompletedAt: new Date().toISOString(),
@@ -307,6 +330,39 @@ export function DataProvider({ userId, children }) {
     await syncOwnLists(ownListObjs().map(l => l.id === list.id ? { ...l, label: list.label, color: list.color ?? l.color } : l));
   };
   const deleteList = async (id) => { if (id === 'mine') return; await deleteListDB(userId, id); await reloadAll(); };
+
+  const saveOrder = async (write) => {
+    if (orderSaving.current) throw new Error('Wacht tot de vorige wijziging is opgeslagen.');
+    orderSaving.current = true;
+    reloadRevision.current += 1;
+    setOrdering(true);
+    try {
+      await write();
+    } finally {
+      orderSaving.current = false;
+      try { await reloadAll(); } finally { setOrdering(false); }
+    }
+  };
+  const reorderLists = (next) => saveOrder(async () => {
+    const own = lists.filter(l => !l.isShared);
+    if (next.length !== own.length || new Set(next.map(l => l.id)).size !== own.length || next.some(l => !own.some(x => x.id === l.id))) {
+      throw new Error('De lijsten zijn gewijzigd. Probeer het opnieuw.');
+    }
+    setLists([...next, ...lists.filter(l => l.isShared)]);
+    await saveListOrderDB(userId, next);
+  });
+  const saveTaskOrder = (listId, changes) => saveOrder(async () => {
+    const list = lists.find(l => l.id === listId && !l.isShared);
+    if (!list) throw new Error('Alleen eigen lijsten kunnen worden ingedeeld.');
+    if (changes.tasks.some(t => !tasks.some(x => x.id === t.id && !x.isShared && (x.list || 'mine') === listId))) {
+      throw new Error('De taken zijn gewijzigd. Probeer het opnieuw.');
+    }
+    const positions = new Map(changes.tasks.map(t => [t.id, t.sortOrder]));
+    setTasks(ts => ts.map(t => positions.has(t.id) ? { ...t, sortOrder: positions.get(t.id) } : t));
+    setLists(ls => ls.map(l => l.id === listId ? { ...l, sections: changes.sections } : l));
+    await upsertListDB(userId, list);
+    await saveTaskOrderDB(userId, listId, changes);
+  });
 
   // ── Delen beheren (Facebook-stijl connecties) ──
   // Uitnodigen = een verzoek versturen (pending). De gekozen lijsten gaan mee en
@@ -377,6 +433,7 @@ export function DataProvider({ userId, children }) {
       loadDeleted, restoreTask, purgeTask,
       addEvent, updateEvent, deleteEvent,
       addList, updateList, deleteList,
+      reorderLists, saveTaskOrder, ordering,
       invitePerson, removeShare, updateSharePermission, acceptInvitation, declineInvitation,
       saveShareLists, setShareCalendar, setPersonColor,
       refresh: reloadAll,
