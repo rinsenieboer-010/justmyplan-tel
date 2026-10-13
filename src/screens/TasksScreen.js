@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform,
-  Animated, Easing,
+  Animated, Easing, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
@@ -538,7 +538,14 @@ const tr = StyleSheet.create({
 
 // ── TASKS SCREEN ──────────────────────────────────────────────────────────────
 export default function TasksScreen() {
-  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled, isSharedVisible } = useData();
+  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled, isSharedVisible, refresh } = useData();
+  // Trek de lijst bovenaan omlaag om opnieuw te laden (draaiend cirkeltje)
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([refresh(), new Promise(r => setTimeout(r, 600))]); }
+    finally { setRefreshing(false); }
+  };
   // Gedeelde lijsten die de ontvanger heeft verborgen niet als tab tonen
   const visibleLists = lists.filter(l => !l.isShared || isSharedVisible(l.id));
   // Gedeelde lijsten tonen in de kleur van de persoon (zo zie je meteen van wie)
@@ -796,6 +803,8 @@ export default function TasksScreen() {
         data={rows}
         keyExtractor={item => item.kind + ':' + String(item.id)}
         renderItem={renderRow}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" colors={['#2563EB']} />}
+        alwaysBounceVertical={true}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={s.list}
