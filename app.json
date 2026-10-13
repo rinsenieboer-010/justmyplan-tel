@@ -42,7 +42,7 @@
       [
         "expo-calendar",
         {
-          "calendarPermission": "justmyplan gebruikt je agenda om bestaande afspraken over te zetten."
+          "calendarPermission": "justmyplan leest je agenda om bestaande afspraken over te zetten, en schrijft je justmyplan-afspraken terug zodat ze ook in Apple of Google Agenda staan."
         }
       ],
       "expo-secure-store",

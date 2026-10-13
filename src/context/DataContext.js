@@ -14,6 +14,7 @@ import { supabase } from '../supabase';
 import { dateKey } from '../utils';
 import { shortenTaskTitle } from '../shortenTaskTitle';
 import { ensureNotificationPermissions, syncNotifications } from '../notifications';
+import { pushEvent, removeEvent, reconcile } from '../calendarSync';
 
 const DataContext = createContext(null);
 
@@ -227,9 +228,21 @@ export function DataProvider({ userId, children }) {
   // schema opnieuw plannen (kort gedebounced zodat een reload niet dubbel plant)
   useEffect(() => { ensureNotificationPermissions(); }, []);
   useEffect(() => {
-    const t = setTimeout(() => syncNotifications(tasks, events), 1500);
+    const t = setTimeout(() => {
+      syncNotifications(tasks, events);
+      // Agenda gelijktrekken. Dit is de pas die wijzigingen uit de webapp naar
+      // je telefoonagenda brengt: die komen via Supabase binnen en gaan dus
+      // nooit langs addEvent/updateEvent hier.
+      //
+      // Verwijderen mag alleen als we zeker weten dat de afsprakenlijst echt
+      // van de server komt. loadEvents geeft namelijk ook een lege lijst terug
+      // als het netwerk faalt, en dat mag nooit als "alles is weg" gelden.
+      if (freshLoaded.current) {
+        reconcile(userId, events, { allowDeletes: true }).catch(() => {});
+      }
+    }, 1500);
     return () => clearTimeout(t);
-  }, [tasks, events]);
+  }, [tasks, events, userId]);
 
   // Realtime: eigen data + gedeelde wijzigingen
   useEffect(() => {
@@ -310,9 +323,28 @@ export function DataProvider({ userId, children }) {
   const purgeTask   = async (id) => { await deleteTaskDB(id); };
 
   // ── Afspraken ──
-  const addEvent = async (event) => { const saved = await addEventDB(userId, event); await reloadAll(); return saved; };
-  const updateEvent = async (event) => { await updateEventDB(event); await reloadAll(); };
-  const deleteEvent = async (id) => { await deleteEventDB(id); await reloadAll(); };
+  // Na elke wijziging spiegelen we naar de agenda op de telefoon (staat
+  // terugsync uit, dan doet dit niets). Bewust in een try/catch en pas ná het
+  // opslaan: dat de agenda-app dwarsligt mag nooit betekenen dat je afspraak
+  // in justmyplan zelf verloren gaat.
+  const mirror = async (fn) => { try { await fn(); } catch {} };
+
+  const addEvent = async (event) => {
+    const saved = await addEventDB(userId, event);
+    await mirror(() => pushEvent(userId, saved));
+    await reloadAll();
+    return saved;
+  };
+  const updateEvent = async (event) => {
+    await updateEventDB(event);
+    await mirror(() => pushEvent(userId, event));
+    await reloadAll();
+  };
+  const deleteEvent = async (id) => {
+    await deleteEventDB(id);
+    await mirror(() => removeEvent(userId, id));
+    await reloadAll();
+  };
 
   // ── Lijsten ──
   // Zorg dat álle eigen lijsten in de DB staan (anders resetten de andere

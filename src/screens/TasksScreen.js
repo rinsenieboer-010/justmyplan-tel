@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform,
-  Animated, Easing,
+  Animated, Easing, RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
@@ -568,7 +568,7 @@ function SortableCell({ children, style, item, onLayout, onFocusCapture }) {
 }
 
 export default function TasksScreen() {
-  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled, isSharedVisible, reorderLists, saveTaskOrder, ordering } = useData();
+  const { tasks, lists, personColors, addTask, updateTask, deleteTask, completeTask, addList, updateList, deleteList, setPagerEnabled, isSharedVisible, reorderLists, saveTaskOrder, ordering, refresh } = useData();
   const [dragging, setDragging] = useState(false);
   const taskListRef = useRef(null);
   const taskViewportRef = useRef(null);
@@ -583,6 +583,13 @@ export default function TasksScreen() {
   const [sectionSaving, setSectionSaving] = useState(false);
   const onDragging = (value) => { setDragging(value); setPagerEnabled(!value); };
   const reportOrderError = () => Alert.alert('Niet volledig opgeslagen', 'De indeling kon niet volledig worden opgeslagen. Controleer je verbinding en probeer het opnieuw.');
+  // Trek de lijst bovenaan omlaag om opnieuw te laden (draaiend cirkeltje)
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await Promise.all([refresh(), new Promise(r => setTimeout(r, 600))]); }
+    finally { setRefreshing(false); }
+  };
   // Gedeelde lijsten die de ontvanger heeft verborgen niet als tab tonen
   const visibleLists = lists.filter(l => !l.isShared || isSharedVisible(l.id));
   // Gedeelde lijsten tonen in de kleur van de persoon (zo zie je meteen van wie)
@@ -855,6 +862,8 @@ export default function TasksScreen() {
           focusTimer.current = setTimeout(() => taskListRef.current?.scrollToIndex({ index, viewPosition: 0.4, animated: true }), 200);
         }}
         removeClippedSubviews={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" colors={['#2563EB']} />}
+        alwaysBounceVertical={!dragging}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
         contentContainerStyle={s.list}
@@ -865,11 +874,6 @@ export default function TasksScreen() {
           </View>
         }
         ListFooterComponent={canEdit ? (<View>
-          {!isSharedList && <TouchableOpacity disabled={ordering} style={s.inlineAddBtn}
-            onPress={() => setSectionDraft({ id: 'sec_' + Date.now(), title: '', color: '#2563EB' })}>
-            <Ionicons name="add-outline" size={18} color="#86868b" />
-            <Text style={s.inlineAddText}>Sectie toevoegen</Text>
-          </TouchableOpacity>}
           {(
           addingInline ? (
             <View style={s.inlineAddRow}>
