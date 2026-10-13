@@ -83,6 +83,8 @@ function dbToTask(r) {
     reminderTime: r.reminder_time || null,
     lastCompletedAt: r.last_completed_at || null,
     deletedAt: r.deleted_at || null,
+    // Label van een agent (bijv. "klantportaal"); alleen agents kunnen dit zetten
+    label: r.label || null,
     sortOrder: r.sort_order ?? null,
   };
 }
