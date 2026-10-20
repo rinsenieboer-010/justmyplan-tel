@@ -746,12 +746,6 @@ export default function TasksScreen() {
           <View style={s.taskInfo}>
             <Text style={s.taskTitle} numberOfLines={1}>{item.title}</Text>
             <View style={s.taskBadges}>
-              {/* Label van een agent: grijs blokje zoals 'Morgen', niet bewerkbaar */}
-              {item.label ? (
-                <View style={[s.badge, { backgroundColor: '#f5f5f7', maxWidth: 160 }]}>
-                  <Text style={[s.badgeText, { color: '#6e6e73' }]} numberOfLines={1}>{item.label}</Text>
-                </View>
-              ) : null}
               {item.deadline && (
                 <View style={[s.badge, { minWidth: item.recurrence ? 100 : undefined, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: isPast ? '#FEE2E2' : isToday ? '#DBEAFE' : '#f5f5f7' }]}>
                   <Text style={[s.badgeText, { flex: item.recurrence ? 1 : undefined, color: isPast ? '#DC2626' : isToday ? '#1d4ed8' : '#6e6e73' }]}>{formatDeadline(item.deadline)}</Text>
@@ -768,12 +762,19 @@ export default function TasksScreen() {
                   aantikbaar (leeg → hoog → midden → laag → leeg) */}
               {dispPrio ? (
                 <TouchableOpacity disabled={!canPrio} onPress={() => cyclePrio(item)}
-                  style={[s.badge, { backgroundColor: PRIO_BG[dispPrio] }]}>
-                  <Text style={[s.badgeText, { color: PRIO_COLOR[dispPrio] }]}>{dispPrio}</Text>
+                  style={[s.badge, s.fixedBadge, { backgroundColor: PRIO_BG[dispPrio] }]}>
+                  <Text style={[s.badgeText, { color: PRIO_COLOR[dispPrio], textAlign: 'center' }]}>{dispPrio}</Text>
                 </TouchableOpacity>
               ) : (canPrio && (
                 <TouchableOpacity onPress={() => cyclePrio(item)} style={s.prioEmptyTap} />
               ))}
+              {/* Label van de agent die de taak heeft: grijs blokje achter de prio,
+                  even breed als het prio-vakje; niet bewerkbaar */}
+              {item.label ? (
+                <View style={[s.badge, s.fixedBadge, { backgroundColor: '#f5f5f7' }]}>
+                  <Text style={[s.badgeText, { color: '#6e6e73', textAlign: 'center' }]} numberOfLines={1}>{item.label}</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
@@ -983,6 +984,8 @@ const s = StyleSheet.create({
   badge:           { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   prioEmptyTap:    { minWidth: 30, minHeight: 18 },
   badgeText:       { fontSize: 11, fontWeight: '600' },
+  // Prio en agent-label even breed, zodat korte namen geen mini-vakje geven
+  fixedBadge:      { minWidth: 58, maxWidth: 110, alignItems: 'center' },
   inlineAddBtn:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 12, paddingHorizontal: 6, marginTop: 2 },
   inlineAddText:   { fontSize: 14, color: '#86868b', fontWeight: '600' },
   inlineAddRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 6, marginTop: 2, borderWidth: 1, borderColor: '#2563EB' },
