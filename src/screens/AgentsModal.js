@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../supabase';
 import { loadAgents, updateAgentDB, deleteAgentDB, createAgentRequest, getAgentRequest } from '../db';
+import VoiceModal from './VoiceModal';
 import { MODEL_BADGE_COLOR, MODEL_OPTIONS, AGENT_EMOJI_CHOICES, AGENT_RUN_URL } from '../agents';
 
 export default function AgentsModal({ visible, onClose }) {
@@ -21,6 +22,7 @@ export default function AgentsModal({ visible, onClose }) {
   const [reply, setReply]       = useState(null);
   const [mode, setMode]         = useState('cloud'); // 'cloud' | 'terminal'
   const [status, setStatus]     = useState('');      // voortgangstekst bij terminal
+  const [voiceOpen, setVoiceOpen] = useState(false); // handsfree praten met de terminal-agent
 
   // edit/create
   const [editing, setEditing] = useState(null); // null = new
@@ -260,6 +262,10 @@ export default function AgentsModal({ visible, onClose }) {
               )}
             </ScrollView>
             <View style={s.inputBar}>
+              <TouchableOpacity onPress={() => setVoiceOpen(true)} disabled={running}
+                style={s.micBtn} accessibilityLabel={`Voice-modus met ${selected.name}`}>
+                <Ionicons name="mic" size={20} color="#fff" />
+              </TouchableOpacity>
               <TextInput style={s.input} placeholder={`Bericht aan ${selected.name}...`} placeholderTextColor="#6b7280"
                 value={input} onChangeText={setInput} multiline />
               <TouchableOpacity onPress={trigger} disabled={running || !input.trim()}
@@ -270,6 +276,7 @@ export default function AgentsModal({ visible, onClose }) {
           </KeyboardAvoidingView>
         )}
       </View>
+      <VoiceModal visible={voiceOpen} onClose={() => setVoiceOpen(false)} agent={selected} uid={uid} />
     </Modal>
   );
 }
@@ -318,5 +325,6 @@ const s = StyleSheet.create({
   replyText:      { color: '#dcfce7', fontSize: 14, lineHeight: 21 },
   inputBar:       { flexDirection: 'row', alignItems: 'flex-end', gap: 8, padding: 12, borderTopWidth: 1, borderTopColor: '#27272a', backgroundColor: '#18181b' },
   input:          { flex: 1, maxHeight: 120, backgroundColor: '#27272a', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 10, fontSize: 14, color: '#f9fafb' },
+  micBtn:         { width: 44, height: 44, borderRadius: 22, backgroundColor: '#16a34a', justifyContent: 'center', alignItems: 'center' },
   sendBtn:        { width: 42, height: 42, borderRadius: 21, backgroundColor: '#2563EB', justifyContent: 'center', alignItems: 'center' },
 });

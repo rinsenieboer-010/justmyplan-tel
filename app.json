@@ -8,7 +8,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-    "runtimeVersion": { "policy": "appVersion" },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "updates": {
       "url": "https://u.expo.dev/d203a3f9-7c08-49a0-bb8e-d31170cd14bf"
     },
@@ -50,6 +52,13 @@
         "expo-image-picker",
         {
           "photosPermission": "justmyplan gebruikt je foto's om afbeeldingen te sturen naar de assistent."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "justmyplan gebruikt je microfoon zodat je in de voice-modus met je agents kunt praten.",
+          "speechRecognitionPermission": "justmyplan zet je stem om in tekst zodat je agents je kunnen verstaan."
         }
       ]
     ],
