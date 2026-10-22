@@ -1,6 +1,7 @@
 // Voice-modus: praten met een echte terminal-agent op de laptop, handsfree.
-// Ritme: luisteren -> (stilte) -> versturen via de bridge -> antwoord voorlezen
-// -> automatisch weer luisteren. Zeg "stop" of "klaar" om te stoppen.
+// Ritme: luisteren -> je zegt "verstuur" -> via de bridge naar de laptop ->
+// antwoord voorlezen -> automatisch weer luisteren. Stilte verstuurt nooit iets.
+// "wissen" gooit je zin weg, "stop" sluit af, "nieuw gesprek" begint opnieuw.
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Modal, Animated, Easing,
@@ -13,8 +14,8 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-spe
 import { createAgentRequest, getAgentRequest } from '../db';
 
 const LANG = 'nl-NL';
-const SILENCE_MS = 1600;        // zo lang stil na je laatste woord: bericht gaat weg
-const IDLE_MS = 15000;          // helemaal niets gehoord: luisteren pauzeert
+const COMMAND_MS = 700;         // korte pauze na een commandowoord, zodat het echt het einde is
+const IDLE_MS = 180000;         // 3 minuten niets gehoord: luisteren pauzeert
 const REPLY_TIMEOUT_MS = 300000; // gelijk aan de timeout van de bridge
 const STILL_BUSY_MS = 25000;    // na zoveel wachten: "ik ben er nog mee bezig"
 const MAX_SENTENCES = 4;
@@ -23,8 +24,15 @@ const MAX_SENTENCES = 4;
 export const VOICE_MARKER = '[[voice]]';
 export const VOICE_NEW_MARKER = '[[voice:new]]';
 
-const STOP_RE = /^(stop|stoppen|klaar|einde|dat was het|dat was 't|doei|tot later|ophangen)$/i;
-const NEW_RE = /^(nieuw gesprek|opnieuw beginnen|begin opnieuw)$/i;
+// Het "enterknopje": je bericht gaat pas weg als je zin hierop eindigt.
+export const SEND_WORD = 'verstuur';
+const SEND_RE = /(^|\s)verstuur$/;
+const CLEAR_RE = /(^|\s)(wissen|wis alles)$/;
+const STOP_RE = /^(stop|stoppen|einde|dat was het|doei|tot later|ophangen)$/;
+const NEW_RE = /^(nieuw gesprek|opnieuw beginnen|begin opnieuw)$/;
+
+const norm = (t) => String(t || '').toLowerCase().replace(/[.,!?;:"]/g, '').replace(/\s+/g, ' ').trim();
+const stripSend = (t) => String(t || '').replace(/[\s,.]*\bverstuur[\s.!?]*$/i, '').trim();
 
 const AUDIO = {
   category: 'playAndRecord',
@@ -102,8 +110,9 @@ function VoiceSession({ agent, uid, onClose }) {
 
   const phaseRef = useRef('starting');
   const transcript = useRef('');
-  const finals = useRef('');        // Android levert losse stukken
-  const silenceTimer = useRef(null);
+  const carry = useRef('');         // tekst van eerdere herkenningsrondes (iOS-limiet, Android-stukken)
+  const restarts = useRef([]);      // tijdstippen van herstarts, tegen eindeloze lussen
+  const silenceTimer = useRef(null); // timer voor commandowoorden
   const idleTimer = useRef(null);
   const firstTurn = useRef(true);
   const voiceId = useRef(undefined);
@@ -123,27 +132,37 @@ function VoiceSession({ agent, uid, onClose }) {
     });
   });
 
-  const listen = () => {
-    if (!alive.current) return;
-    clearTimers();
-    transcript.current = ''; finals.current = '';
-    setHeard(''); setNote(''); setPhase('listening');
+  const startRecognizer = () => {
     ExpoSpeechRecognitionModule.start({
       lang: LANG, interimResults: true, continuous: true, addsPunctuation: true,
       iosCategory: AUDIO,
     });
+  };
+
+  const armIdle = () => {
+    clearTimeout(idleTimer.current);
     idleTimer.current = setTimeout(() => {
-      if (phaseRef.current === 'listening' && !transcript.current.trim()) {
-        ExpoSpeechRecognitionModule.abort();
-        setPhase('paused');
-      }
+      if (phaseRef.current !== 'listening') return;
+      ExpoSpeechRecognitionModule.abort();
+      setPhase('paused'); // je tekst blijft bewaard; tik om verder te gaan
     }, IDLE_MS);
+  };
+
+  const listen = (keepText = false) => {
+    if (!alive.current) return;
+    clearTimers();
+    if (!keepText) { transcript.current = ''; carry.current = ''; setHeard(''); }
+    else carry.current = transcript.current;
+    restarts.current = [];
+    setNote(''); setPhase('listening');
+    startRecognizer();
+    armIdle();
   };
 
   const finishUtterance = () => {
     if (phaseRef.current !== 'listening') return;
     clearTimers();
-    const text = transcript.current.trim();
+    const text = stripSend(transcript.current);
     setPhase('thinking');
     ExpoSpeechRecognitionModule.stop();
     if (!text) { setPhase('paused'); return; }
@@ -174,7 +193,7 @@ function VoiceSession({ agent, uid, onClose }) {
   };
 
   const handleText = async (raw) => {
-    const cmd = raw.toLowerCase().replace(/[.!?,]/g, '').trim();
+    const cmd = norm(raw);
     if (STOP_RE.test(cmd)) {
       await speak('Oké, tot later.');
       onClose();
@@ -207,31 +226,45 @@ function VoiceSession({ agent, uid, onClose }) {
     }
   };
 
-  // Spraakherkenning: houd bij wat je zegt en wacht op een korte stilte.
+  // Spraakherkenning: houd bij wat je zegt en reageer alleen op commandowoorden.
   useSpeechRecognitionEvent('result', (e) => {
     if (phaseRef.current !== 'listening') return;
     const piece = e.results?.[0]?.transcript || '';
-    if (Platform.OS === 'android') {
-      if (e.isFinal) { finals.current = `${finals.current} ${piece}`.trim(); transcript.current = finals.current; }
-      else transcript.current = `${finals.current} ${piece}`.trim();
-    } else {
-      transcript.current = piece; // iOS geeft de hele zin tot nu toe
+    const full = `${carry.current} ${piece}`.trim();
+    transcript.current = full;
+    if (Platform.OS === 'android' && e.isFinal) carry.current = full; // Android begint daarna opnieuw
+    setHeard(stripSend(full));
+    armIdle();
+
+    clearTimeout(silenceTimer.current);
+    const n = norm(full);
+    if (SEND_RE.test(n)) {
+      silenceTimer.current = setTimeout(finishUtterance, COMMAND_MS);
+    } else if (CLEAR_RE.test(n)) {
+      silenceTimer.current = setTimeout(() => {
+        if (phaseRef.current !== 'listening') return;
+        ExpoSpeechRecognitionModule.abort();
+        setTimeout(() => listen(false), 300);
+      }, COMMAND_MS);
+    } else if (STOP_RE.test(n) || NEW_RE.test(n)) {
+      silenceTimer.current = setTimeout(finishUtterance, COMMAND_MS + 500);
     }
-    setHeard(transcript.current);
-    clearTimers();
-    silenceTimer.current = setTimeout(finishUtterance, SILENCE_MS);
   });
   useSpeechRecognitionEvent('end', () => {
-    // Herkenning stopte vanzelf (bijv. tijdslimiet van iOS) terwijl we nog luisterden.
-    if (phaseRef.current !== 'listening') return;
-    if (transcript.current.trim()) finishUtterance();
-    else { clearTimers(); setPhase('paused'); }
+    // De herkenner stopte vanzelf (tijdslimiet of lange stilte). Niets versturen:
+    // gewoon doorluisteren en je tekst tot nu toe bewaren.
+    if (phaseRef.current !== 'listening' || !alive.current) return;
+    const now = Date.now();
+    restarts.current = restarts.current.filter((t0) => now - t0 < 10000).concat(now);
+    if (restarts.current.length > 5) { clearTimers(); setPhase('paused'); return; }
+    carry.current = transcript.current;
+    setTimeout(() => { if (phaseRef.current === 'listening') startRecognizer(); }, 250);
   });
   useSpeechRecognitionEvent('error', (e) => {
-    if (e.error === 'aborted') return;
+    if (e.error === 'aborted' || e.error === 'no-speech') return; // 'end' herstart het luisteren
     if (phaseRef.current !== 'listening') return;
     clearTimers();
-    if (e.error !== 'no-speech') setNote(e.message || e.error);
+    setNote(e.message || e.error);
     setPhase('paused');
   });
 
@@ -248,7 +281,7 @@ function VoiceSession({ agent, uid, onClose }) {
       }
       voiceId.current = await pickDutchVoice();
       setPhase('speaking');
-      await speak(`${agent.name} hier. Ik luister.`);
+      await speak(`${agent.name} hier. Zeg verstuur als je klaar bent.`);
       if (alive.current) listen();
     })();
     return () => {
@@ -275,13 +308,13 @@ function VoiceSession({ agent, uid, onClose }) {
   const onTap = () => {
     const p = phaseRef.current;
     if (p === 'speaking') { Speech.stop(); return; }           // speak() resolvet, daarna luistert hij
-    if (p === 'listening') { if (transcript.current.trim()) finishUtterance(); return; }
-    if (p === 'paused') listen();
+    if (p === 'listening') { if (stripSend(transcript.current)) finishUtterance(); return; } // tik = ook versturen
+    if (p === 'paused') listen(true);
   };
 
   const label = {
     starting:  'Opstarten...',
-    listening: 'Ik luister...',
+    listening: `Ik luister. Zeg "${SEND_WORD}" om te versturen.`,
     thinking:  `${agent.name} denkt na op je laptop...`,
     speaking:  'Aan het woord. Tik om te onderbreken.',
     paused:    'Gepauzeerd. Tik om verder te praten.',
@@ -321,7 +354,7 @@ function VoiceSession({ agent, uid, onClose }) {
             <Text style={s.tText}>{answer}</Text>
           </View>
         )}
-        <Text style={s.hint}>Zeg "stop" om te stoppen of "nieuw gesprek" om opnieuw te beginnen.</Text>
+        <Text style={s.hint}>Eindig met "verstuur" om je bericht te sturen. "Wissen" gooit je zin weg, "stop" sluit af, "nieuw gesprek" begint opnieuw.</Text>
       </ScrollView>
     </View>
   );
