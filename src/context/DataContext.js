@@ -361,7 +361,15 @@ export function DataProvider({ userId, children }) {
   const updateList = async (list) => {
     await syncOwnLists(ownListObjs().map(l => l.id === list.id ? { ...l, label: list.label, color: list.color ?? l.color } : l));
   };
-  const deleteList = async (id) => { if (id === 'mine') return; await deleteListDB(userId, id); await reloadAll(); };
+  // Taken van de lijst gaan mee naar de prullenbak; anders blijven ze achter
+  // als een grijze 'list_...'-lijst die niet te verwijderen is.
+  const deleteList = async (id) => {
+    if (id === 'mine') return;
+    const own = tasks.filter(t => !t.isShared && (t.list || 'mine') === id);
+    await Promise.all(own.map(t => trashTaskDB(t.id)));
+    await deleteListDB(userId, id);
+    await reloadAll();
+  };
 
   const saveOrder = async (write) => {
     if (orderSaving.current) throw new Error('Wacht tot de vorige wijziging is opgeslagen.');

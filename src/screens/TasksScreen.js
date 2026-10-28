@@ -657,7 +657,7 @@ export default function TasksScreen() {
   };
 
   const handleDeleteList = () => {
-    Alert.alert('Lijst verwijderen', `"${activeListObj?.label}" verwijderen? Taken in deze lijst blijven bestaan.`, [
+    Alert.alert('Lijst verwijderen', `"${activeListObj?.label}" verwijderen? De taken in deze lijst gaan naar de prullenbak.`, [
       { text: 'Annuleer', style: 'cancel' },
       { text: 'Verwijderen', style: 'destructive', onPress: async () => {
         await deleteList(activeList);
