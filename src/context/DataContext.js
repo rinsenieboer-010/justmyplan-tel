@@ -5,7 +5,7 @@ import {
   addTaskDB, updateTaskDB, trashTaskDB, deleteTaskDB,
   loadDeletedTasks, restoreTaskDB,
   addEventDB, updateEventDB, deleteEventDB,
-  upsertListDB, deleteListDB,
+  upsertListDB, deleteListDB, trashListTasksDB,
   saveListOrderDB, saveTaskOrderDB,
   loadShareLists, setShareLists,
   loadPersonColors, setPersonColorDB, removePersonColorDB,
@@ -365,8 +365,7 @@ export function DataProvider({ userId, children }) {
   // als een grijze 'list_...'-lijst die niet te verwijderen is.
   const deleteList = async (id) => {
     if (id === 'mine') return;
-    const own = tasks.filter(t => !t.isShared && (t.list || 'mine') === id);
-    await Promise.all(own.map(t => trashTaskDB(t.id)));
+    await trashListTasksDB(userId, id);
     await deleteListDB(userId, id);
     await reloadAll();
   };

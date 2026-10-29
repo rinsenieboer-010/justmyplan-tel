@@ -185,8 +185,18 @@ export async function updateListDB(list) {
   await supabase.from('lists').update({ label: list.label, color: list.color }).eq('id', list.id);
 }
 
+// Alle open taken van een lijst in één keer naar de prullenbak, ook taken
+// die de app nog niet geladen had.
+export async function trashListTasksDB(userId, listId) {
+  const { error } = await supabase.from('tasks')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('user_id', userId).eq('list_id', listId).is('deleted_at', null);
+  if (error) throw error;
+}
+
 export async function deleteListDB(userId, id) {
-  await supabase.from('lists').delete().eq('user_id', userId).eq('id', id);
+  const { error } = await supabase.from('lists').delete().eq('user_id', userId).eq('id', id);
+  if (error) throw error;
 }
 
 function dbToList(r) {

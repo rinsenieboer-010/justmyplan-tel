@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, FlatList, TouchableOpacity, StyleSheet,
   Modal, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform,
-  Animated, Easing, RefreshControl,
+  Animated, Easing, RefreshControl, Pressable, Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useData } from '../context/DataContext';
@@ -598,6 +598,8 @@ export default function TasksScreen() {
   const [modalTask, setModalTask]       = useState(undefined); // undefined = closed, null = new task
   const [showListModal, setShowListModal] = useState(false);
   const [showTrash, setShowTrash]         = useState(false);
+  const [listMenu, setListMenu]           = useState(null); // { top, right } van het drie-puntjesmenu
+  const menuBtnRef = useRef(null);
   const [editingListId, setEditingListId] = useState(null);
   const [editLabel, setEditLabel]         = useState('');
 
@@ -823,16 +825,11 @@ export default function TasksScreen() {
           ))}
         </ScrollView>
         </View>
-        {canDeleteList && (
-          <TouchableOpacity onPress={handleDeleteList} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Ionicons name="trash-outline" size={18} color="#86868b" />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity onPress={() => setShowTrash(true)} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="archive-outline" size={17} color="#86868b" />
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => setShowListModal(true)} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-          <Ionicons name="add" size={22} color="#86868b" />
+        <TouchableOpacity ref={menuBtnRef} style={s.tabIconBtn} hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+          accessibilityLabel="Lijstopties"
+          onPress={() => menuBtnRef.current?.measureInWindow((x, y, w, h) =>
+            setListMenu({ top: y + h, right: Math.max(8, Dimensions.get('window').width - x - w) }))}>
+          <Ionicons name="ellipsis-horizontal" size={20} color="#86868b" />
         </TouchableOpacity>
       </View>
 
@@ -962,6 +959,24 @@ export default function TasksScreen() {
       )}
 
       {/* Prullenbak / voltooid */}
+      {listMenu && (
+        <Modal transparent animationType="fade" onRequestClose={() => setListMenu(null)}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setListMenu(null)} />
+          <View style={[s.menu, { top: listMenu.top, right: listMenu.right }]}>
+            {[
+              { icon: 'add', label: 'Nieuwe lijst', onPress: () => setShowListModal(true) },
+              { icon: 'archive-outline', label: 'Prullenbak', onPress: () => setShowTrash(true) },
+              canDeleteList && { icon: 'trash-outline', label: 'Lijst verwijderen', danger: true, onPress: handleDeleteList },
+            ].filter(Boolean).map((item, i) => (
+              <TouchableOpacity key={item.label} style={[s.menuItem, i > 0 && s.menuDivider]}
+                onPress={() => { setListMenu(null); setTimeout(item.onPress, 350); }}>
+                <Ionicons name={item.icon} size={18} color={item.danger ? '#DC2626' : '#1d1d1f'} />
+                <Text style={[s.menuText, item.danger && { color: '#DC2626' }]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </Modal>
+      )}
       {showTrash && <TrashModal onClose={() => setShowTrash(false)} />}
     </View>
   );
@@ -971,6 +986,10 @@ const s = StyleSheet.create({
   container:       { flex: 1, backgroundColor: '#f5f5f7' },
   listTabsContent: { paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center' },
   tabIconBtn:      { paddingHorizontal: 10, paddingVertical: 13 },
+  menu:            { position: 'absolute', minWidth: 200, backgroundColor: '#fff', borderRadius: 12, paddingVertical: 4, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  menuItem:        { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, minHeight: 44 },
+  menuDivider:     { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#e5e5ea' },
+  menuText:        { fontSize: 15, color: '#1d1d1f' },
   listTab:         { paddingHorizontal: 12, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 2, borderBottomColor: 'transparent' },
   listDot:         { width: 7, height: 7, borderRadius: 4 },
   listTabText:     { fontSize: 15, color: '#86868b', fontWeight: '600', letterSpacing: -0.15 },
