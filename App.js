@@ -15,7 +15,6 @@ import LoginScreen from './src/screens/LoginScreen';
 import TasksScreen from './src/screens/TasksScreen';
 import CalendarScreen from './src/screens/CalendarScreen';
 import AIScreen from './src/screens/AIScreen';
-import AgentsModal from './src/screens/AgentsModal';
 import ImportCalendarModal from './src/screens/ImportCalendarModal';
 import SyncCalendarModal from './src/screens/SyncCalendarModal';
 
@@ -43,7 +42,6 @@ function MainApp() {
   const [current, setCurrent]       = useState(0);
   const [showSettings, setShowSettings]     = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [showAgents, setShowAgents]         = useState(false);
   const [showImport, setShowImport]         = useState(false);
   const [showSync, setShowSync]             = useState(false);
   const [apiKey, setApiKey]               = useState(null);
@@ -312,20 +310,6 @@ function MainApp() {
 
               <View style={{ height:1, backgroundColor:'#27272a', marginBottom:20 }} />
 
-              {/* Agent Management */}
-              <Text style={{ fontSize:10, color:'#6e6e73', fontWeight:'700', letterSpacing:1, marginBottom:10 }}>AGENTS</Text>
-              <TouchableOpacity onPress={() => { setShowSettings(false); setShowAgents(true); }}
-                style={{ flexDirection:'row', alignItems:'center', gap:10, backgroundColor:'#1d1d1f', borderRadius:8, padding:12, marginBottom:20 }}>
-                <Text style={{ fontSize:18 }}>⚡</Text>
-                <View style={{ flex:1 }}>
-                  <Text style={{ color:'#f5f5f7', fontSize:13, fontWeight:'600' }}>Agent Management</Text>
-                  <Text style={{ color:'#6e6e73', fontSize:11, marginTop:1 }}>Stuur een bericht naar je agents</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={18} color="#6e6e73" />
-              </TouchableOpacity>
-
-              <View style={{ height:1, backgroundColor:'#27272a', marginBottom:20 }} />
-
               {/* API */}
               <Text style={{ fontSize:10, color:'#6e6e73', fontWeight:'700', letterSpacing:1, marginBottom:10 }}>API TOEGANG</Text>
               <Text style={{ fontSize:12, color:'#6e6e73', marginBottom:12, lineHeight:18 }}>
@@ -535,7 +519,6 @@ function MainApp() {
         </Modal>
 
         {/* ── Agent Management modal ── */}
-        <AgentsModal visible={showAgents} onClose={() => setShowAgents(false)} />
 
         {/* ── Apple Agenda import modal ── */}
         <ImportCalendarModal visible={showImport} onClose={() => setShowImport(false)} />
