@@ -748,6 +748,9 @@ export default function TasksScreen() {
           <View style={s.taskInfo}>
             <Text style={s.taskTitle} numberOfLines={1}>{item.title}</Text>
             <View style={s.taskBadges}>
+              {!!item.note?.trim() && (
+                <Ionicons name="document-text-outline" size={16} color="#6e6e73" accessibilityLabel="Bevat een notitie" />
+              )}
               {item.deadline && (
                 <View style={[s.badge, { minWidth: item.recurrence ? 100 : undefined, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: isPast ? '#FEE2E2' : isToday ? '#DBEAFE' : '#f5f5f7' }]}>
                   <Text style={[s.badgeText, { flex: item.recurrence ? 1 : undefined, color: isPast ? '#DC2626' : isToday ? '#1d4ed8' : '#6e6e73' }]}>{formatDeadline(item.deadline)}</Text>
