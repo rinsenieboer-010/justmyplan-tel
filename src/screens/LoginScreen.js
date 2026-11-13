@@ -90,7 +90,11 @@ export default function LoginScreen() {
       const redirectUri = Linking.createURL('/');
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo: redirectUri, skipBrowserRedirect: true },
+        options: {
+          redirectTo: redirectUri,
+          skipBrowserRedirect: true,
+          ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {}),
+        },
       });
       if (error) { Alert.alert('Fout', error.message); return; }
 
